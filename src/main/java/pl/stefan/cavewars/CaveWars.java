@@ -22,21 +22,18 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        getLogger().info("Plugin CaveWars 1.21.4 (Full Ore Edition) aktywowany!");
+        getLogger().info("Plugin CaveWars 1.21.4 (Total Ore - No Caves) aktywowany!");
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("cwstart")) {
             if (!sender.isOp()) {
-                sender.sendMessage(ChatColor.RED + "Nie masz uprawnień!");
+                sender.sendMessage(ChatColor.RED + "Brak uprawnien!");
                 return true;
             }
             
-            // 1. Generowanie areny pełnej rud
-            generateFullOreArena();
-            
-            // 2. Start meczu (Teleportacja i Border)
+            generateTotalOreArena();
             startMatch();
             
             return true;
@@ -44,46 +41,44 @@ public class CaveWars extends JavaPlugin implements Listener {
         return false;
     }
 
-    private void generateFullOreArena() {
+    private void generateTotalOreArena() {
         World world = Bukkit.getWorlds().get(0);
         int radius = 100; 
         int ceilingY = 40;
         int floorY = -60;
 
-        Bukkit.broadcastMessage(ChatColor.GOLD + "⛏ TRWA GENEROWANIE MAPY RUD... SERWER MOŻE SIĘ ZAMROZIĆ NA CHWILĘ!");
+        Bukkit.broadcastMessage(ChatColor.DARK_PURPLE + "⛏ TRWA TOTALNE WYPELNIANIE MAPY RUDAMI... Moze to potrwac dluzej!");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 
-                // Tworzenie niezniszczalnego sufitu
+                // Sufit z bedrocka
                 world.getBlockAt(x, ceilingY, z).setType(Material.BEDROCK);
 
-                // Wypełnianie przestrzeni pod sufitem
+                // Wypełnianie KAŻDEGO bloku (brak jaskiń, brak wody)
                 for (int y = floorY; y < ceilingY; y++) {
                     Block block = world.getBlockAt(x, y, z);
                     
-                    if (block.getType() == Material.AIR) continue;
-
                     double chance = random.nextDouble();
 
-                    // Generator rud (Full Ore World)
-                    if (chance < 0.03) { 
-                        block.setType(Material.ANCIENT_DEBRIS);
-                    } else if (chance < 0.10) { 
-                        block.setType(Material.DIAMOND_ORE);
-                    } else if (chance < 0.25) { 
-                        block.setType(Material.GOLD_ORE);
-                    } else if (chance < 0.55) { 
-                        block.setType(Material.IRON_ORE);
-                    } else if (chance < 0.80) { 
-                        block.setType(Material.COAL_ORE);
+                    // 100% bloków pod sufitem staje się rudami:
+                    if (chance < 0.05) { 
+                        block.setType(Material.ANCIENT_DEBRIS); // 5% na Debris
+                    } else if (chance < 0.15) { 
+                        block.setType(Material.DIAMOND_ORE);    // 10% na Diamenty
+                    } else if (chance < 0.35) { 
+                        block.setType(Material.GOLD_ORE);       // 20% na Złoto
+                    } else if (chance < 0.65) { 
+                        block.setType(Material.IRON_ORE);       // 30% na Żelazo
+                    } else if (chance < 0.85) { 
+                        block.setType(Material.COAL_ORE);       // 20% na Węgiel
                     } else {
-                        block.setType(Material.LAPIS_ORE);
+                        block.setType(Material.LAPIS_ORE);      // 15% na Lapis
                     }
                 }
             }
         }
-        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena wygenerowana!");
+        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena gotowa! Swiat jest litym blokiem surowcow.");
     }
 
     private void startMatch() {
@@ -92,24 +87,30 @@ public class CaveWars extends JavaPlugin implements Listener {
         
         border.setCenter(0, 0);
         border.setSize(200); 
-        border.setSize(10, 600); // 10 minut do końca
+        border.setSize(10, 600); 
 
         for (Player p : Bukkit.getOnlinePlayers()) {
             int x = random.nextInt(160) - 80;
             int z = random.nextInt(160) - 80;
-            Location loc = new Location(world, x, 30, z);
+            
+            // Teleportujemy gracza na poziom Y=35 (zaraz pod sufitem), 
+            // bo skoro nie ma jaskiń, muszą zacząć kopać od góry.
+            Location loc = new Location(world, x, 35, z);
+            
+            // Czyscimy maly obszar 1x2x1 żeby gracz nie zginal w bloku od razu
+            loc.getBlock().setType(Material.AIR);
+            loc.clone().add(0, 1, 0).getBlock().setType(Material.AIR);
             
             p.teleport(loc);
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
             
             p.getInventory().addItem(new ItemStack(Material.IRON_PICKAXE));
-            p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
+            p.getInventory().addItem(new ItemStack(Material.BREAD, 64));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
+            p.getInventory().addItem(new ItemStack(Material.TORCH, 64));
             
-            p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "CAVE WARS WYSTARTOWAŁO!");
-            
-            // POPRAWIONY DŹWIĘK (Naprawia błąd kompilacji z obrazka)
+            p.sendMessage(ChatColor.RED + "Kop w dol! Caly swiat to rudy!");
             p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
         }
     }
@@ -119,31 +120,25 @@ public class CaveWars extends JavaPlugin implements Listener {
         Block b = event.getBlock();
         Player p = event.getPlayer();
 
-        // Auto-smelt dla Żelaza
         if (b.getType() == Material.IRON_ORE || b.getType() == Material.DEEPSLATE_IRON_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.IRON_INGOT));
-            p.giveExp(1);
         }
         
-        // Auto-smelt dla Złota
         if (b.getType() == Material.GOLD_ORE || b.getType() == Material.DEEPSLATE_GOLD_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.GOLD_INGOT));
-            p.giveExp(2);
         }
 
-        // Efekt dla Debris
         if (b.getType() == Material.ANCIENT_DEBRIS) {
-            p.sendMessage(ChatColor.LIGHT_PURPLE + "⛏ Znalazłeś cenny Debris!");
+            p.sendMessage(ChatColor.LIGHT_PURPLE + "⛏ Debris!");
             p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 1.0f);
         }
     }
 
     @EventHandler
     public void onDeath(PlayerDeathEvent event) {
-        Player player = event.getEntity();
-        player.setGameMode(GameMode.SPECTATOR);
-        Bukkit.broadcastMessage(ChatColor.RED + "☠ Gracz " + player.getName() + " został wyeliminowany!");
+        event.getEntity().setGameMode(GameMode.SPECTATOR);
+        Bukkit.broadcastMessage(ChatColor.RED + "☠ " + event.getEntity().getName() + " odpadl!");
     }
 }

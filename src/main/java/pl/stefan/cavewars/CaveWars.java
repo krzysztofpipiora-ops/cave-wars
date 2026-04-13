@@ -23,14 +23,14 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         Bukkit.getScheduler().runTaskTimer(this, this::checkBorderDistance, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Full Resources Edition) aktywowany!");
+        getLogger().info("CaveWars 1.21.4 (Pokoje 3x3x3 + Start Gear) gotowy!");
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("cwstart") && sender.isOp()) {
             generateFullResourceArena();
-            startMatch();
+            startMatchWithRooms();
             return true;
         }
         return false;
@@ -42,45 +42,84 @@ public class CaveWars extends JavaPlugin implements Listener {
         int ceilingY = 40;
         int floorY = -60;
 
-        Bukkit.broadcastMessage(ChatColor.GOLD + "⛏ Generowanie mapy zasobów (Drewno, Liście, Szkło, Glowstone)...");
+        Bukkit.broadcastMessage(ChatColor.GOLD + "⛏ Generowanie mapy zasobów...");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 world.getBlockAt(x, ceilingY, z).setType(Material.BEDROCK);
-
                 for (int y = floorY; y < ceilingY; y++) {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    // NOWY GENERATOR ZASOBÓW
                     if (chance < 0.04) block.setType(Material.ANCIENT_DEBRIS);
                     else if (chance < 0.10) block.setType(Material.DIAMOND_ORE);
                     else if (chance < 0.20) block.setType(Material.GOLD_ORE);
                     else if (chance < 0.35) block.setType(Material.IRON_ORE);
-                    else if (chance < 0.45) block.setType(Material.OAK_LOG);    // DREWNO
-                    else if (chance < 0.55) block.setType(Material.OAK_LEAVES); // LIŚCIE
-                    else if (chance < 0.60) block.setType(Material.GLASS);      // SZKŁO
-                    else if (chance < 0.65) block.setType(Material.GLOWSTONE);  // GLOWSTONE
+                    else if (chance < 0.45) block.setType(Material.OAK_LOG);
+                    else if (chance < 0.55) block.setType(Material.OAK_LEAVES);
+                    else if (chance < 0.60) block.setType(Material.GLASS);
+                    else if (chance < 0.65) block.setType(Material.GLOWSTONE);
                     else if (chance < 0.80) block.setType(Material.COAL_ORE);
                     else block.setType(Material.LAPIS_ORE);
                 }
             }
         }
-        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena z pełnymi zasobami gotowa!");
+        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena gotowa!");
+    }
+
+    private void startMatchWithRooms() {
+        World world = Bukkit.getWorlds().get(0);
+        WorldBorder border = world.getWorldBorder();
+        border.setCenter(0, 0);
+        border.setSize(100); 
+
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            // Losowanie centrum pokoju 3x3x3
+            int x = random.nextInt(70) - 35;
+            int z = random.nextInt(70) - 35;
+            int y = 20; // Środek areny w pionie
+
+            // Tworzenie pokoju 3x3x3 (czyszczenie bloków)
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        world.getBlockAt(x + dx, y + dy, z + dz).setType(Material.AIR);
+                    }
+                }
+            }
+
+            // Teleportacja gracza na środek pokoju
+            Location spawnLoc = new Location(world, x + 0.5, y - 0.5, z + 0.5);
+            p.teleport(spawnLoc);
+            
+            p.setGameMode(GameMode.SURVIVAL);
+            p.getInventory().clear();
+            
+            // Startowy ekwipunek
+            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
+            p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
+            p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
+            p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
+            p.getInventory().addItem(new ItemStack(Material.TORCH, 16));
+            
+            p.sendMessage(ChatColor.AQUA + "Jesteś w swoim pokoju startowym! Powodzenia!");
+            p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
+        }
+
+        // Opóźnienie borderu o 1 minutę
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            border.setSize(6, 480);
+            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył!");
+        }, 1200L); 
     }
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Block b = event.getBlock();
-        Player p = event.getPlayer();
-
-        // Mechanika Liści: 33% szansy na jabłko
-        if (b.getType() == Material.OAK_LEAVES) {
-            if (random.nextDouble() < 0.33) {
-                b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.APPLE));
-            }
+        // Szansa na jabłko z liści (33%)
+        if (b.getType() == Material.OAK_LEAVES && random.nextDouble() < 0.33) {
+            b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.APPLE));
         }
-
         // Auto-smelt
         if (b.getType() == Material.IRON_ORE || b.getType() == Material.DEEPSLATE_IRON_ORE) {
             event.setDropItems(false);
@@ -91,8 +130,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.GOLD_INGOT));
         }
     }
-
-    // --- Reszta metod (startMatch, checkBorderDistance, onDeath) pozostaje bez zmian ---
 
     private void checkBorderDistance() {
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -109,33 +146,6 @@ public class CaveWars extends JavaPlugin implements Listener {
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
             }
         }
-    }
-
-    private void startMatch() {
-        World world = Bukkit.getWorlds().get(0);
-        WorldBorder border = world.getWorldBorder();
-        border.setCenter(0, 0);
-        border.setSize(100); 
-
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            int x = random.nextInt(80) - 40;
-            int z = random.nextInt(80) - 40;
-            Location loc = new Location(world, x, 35, z);
-            loc.getBlock().setType(Material.AIR);
-            loc.clone().add(0, 1, 0).getBlock().setType(Material.AIR);
-            p.teleport(loc);
-            p.setGameMode(GameMode.SURVIVAL);
-            p.getInventory().clear();
-            p.getInventory().addItem(new ItemStack(Material.IRON_PICKAXE));
-            p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
-            p.sendMessage(ChatColor.GOLD + "⭐ Masz 1 MINUTĘ! Kop drewno i liście na jabłka!");
-            p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
-        }
-
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            border.setSize(6, 480);
-            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył!");
-        }, 1200L); 
     }
 
     @EventHandler

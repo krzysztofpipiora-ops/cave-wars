@@ -13,17 +13,22 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.HashMap;
 import java.util.Random;
+import java.util.UUID;
 
 public class CaveWars extends JavaPlugin implements Listener {
 
     private final Random random = new Random();
+    // Mapa do przechowywania czasu ostatniego powiadomienia dla każdego gracza
+    private final HashMap<UUID, Long> lastWarningTime = new HashMap<>();
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
+        // Sprawdzanie dystansu co sekundę
         Bukkit.getScheduler().runTaskTimer(this, this::checkBorderDistance, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Pokoje 3x3x3 + Start Gear) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Slower Border + Anti-Spam) gotowy!");
     }
 
     @Override
@@ -34,6 +39,33 @@ public class CaveWars extends JavaPlugin implements Listener {
             return true;
         }
         return false;
+    }
+
+    private void checkBorderDistance() {
+        long currentTime = System.currentTimeMillis();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() != GameMode.SURVIVAL) continue;
+
+            WorldBorder border = p.getWorld().getWorldBorder();
+            double size = border.getSize() / 2;
+            Location center = border.getCenter();
+            Location loc = p.getLocation();
+
+            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
+                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
+
+            // Jeśli gracz jest blisko borderu (15 kratek)
+            if (minDist <= 15.0 && minDist > 0) {
+                long lastNotify = lastWarningTime.getOrDefault(p.getUniqueId(), 0L);
+                
+                // Sprawdzanie czy minęło 12 sekund (12000 ms) od ostatniej wiadomości
+                if (currentTime - lastNotify >= 12000) {
+                    p.sendMessage(ChatColor.RED + "⚠ Border jest blisko! (" + (int)minDist + " bloków)");
+                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
+                    lastWarningTime.put(p.getUniqueId(), currentTime);
+                }
+            }
+        }
     }
 
     private void generateFullResourceArena() {
@@ -64,7 +96,6 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
         }
-        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena gotowa!");
     }
 
     private void startMatchWithRooms() {
@@ -74,12 +105,10 @@ public class CaveWars extends JavaPlugin implements Listener {
         border.setSize(100); 
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Losowanie centrum pokoju 3x3x3
             int x = random.nextInt(70) - 35;
             int z = random.nextInt(70) - 35;
-            int y = 20; // Środek areny w pionie
+            int y = 20;
 
-            // Tworzenie pokoju 3x3x3 (czyszczenie bloków)
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
@@ -88,39 +117,33 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
 
-            // Teleportacja gracza na środek pokoju
-            Location spawnLoc = new Location(world, x + 0.5, y - 0.5, z + 0.5);
-            p.teleport(spawnLoc);
-            
+            p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
             
-            // Startowy ekwipunek
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
             p.getInventory().addItem(new ItemStack(Material.TORCH, 16));
             
-            p.sendMessage(ChatColor.AQUA + "Jesteś w swoim pokoju startowym! Powodzenia!");
+            p.sendMessage(ChatColor.AQUA + "Start! Masz minutę spokoju.");
             p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
         }
 
-        // Opóźnienie borderu o 1 minutę
+        // SPOWOLNIONY BORDER: 15 minut (900 sekund)
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            border.setSize(6, 480);
-            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył!");
+            border.setSize(6, 900); 
+            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył (wolne tempo - 15 min)!");
         }, 1200L); 
     }
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Block b = event.getBlock();
-        // Szansa na jabłko z liści (33%)
         if (b.getType() == Material.OAK_LEAVES && random.nextDouble() < 0.33) {
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.APPLE));
         }
-        // Auto-smelt
         if (b.getType() == Material.IRON_ORE || b.getType() == Material.DEEPSLATE_IRON_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.IRON_INGOT));
@@ -128,23 +151,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (b.getType() == Material.GOLD_ORE || b.getType() == Material.DEEPSLATE_GOLD_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.GOLD_INGOT));
-        }
-    }
-
-    private void checkBorderDistance() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.getGameMode() != GameMode.SURVIVAL) continue;
-            WorldBorder border = p.getWorld().getWorldBorder();
-            double size = border.getSize() / 2;
-            Location center = border.getCenter();
-            Location loc = p.getLocation();
-            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
-                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
-
-            if (minDist <= 15.0 && minDist > 0) {
-                p.sendMessage(ChatColor.RED + "⚠ Border jest blisko! (" + (int)minDist + " bloków)");
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
-            }
         }
     }
 

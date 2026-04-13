@@ -1,10 +1,8 @@
-name: BlockedInCombat
-version: 1.1.2
-main: fr.kinj14.blockedincombat.Main
+name: CaveWars
+version: 1.0
+main: pl.stefan.cavewars.CaveWars
 api-version: '1.21'
-author: kinj14
-description: Plugin blokujący budowanie podczas walki.
 commands:
-  blockedincombat:
-    description: Główna komenda pluginu.
-    aliases: [bic]
+  cwstart:
+    description: Startuje rozgrywkę CaveWars
+    permission: cavewars.admin

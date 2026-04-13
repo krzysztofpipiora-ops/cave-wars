@@ -22,43 +22,66 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        getLogger().info("CaveWars 8-osobowe (Mala Arena) aktywowany!");
+        
+        // --- MONITOR BORDERU ---
+        // Sprawdza co 20 ticków (1 sekunda), czy gracze są blisko borderu
+        Bukkit.getScheduler().runTaskTimer(this, this::checkBorderDistance, 20L, 20L);
+        
+        getLogger().info("CaveWars (Mala Arena + Ostrzezenia) gotowy!");
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("cwstart") && sender.isOp()) {
-            
-            // 1. Mala arena dla 8 osob
             generateSmallArena();
-            
-            // 2. Start (Teleportacja i Szybki Border)
             startMatch();
-            
             return true;
         }
         return false;
     }
 
+    private void checkBorderDistance() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() != GameMode.SURVIVAL) continue;
+
+            World world = p.getWorld();
+            WorldBorder border = world.getWorldBorder();
+            double size = border.getSize() / 2;
+            Location center = border.getCenter();
+            Location loc = p.getLocation();
+
+            // Obliczanie dystansu do krawędzi (kwadratowy border)
+            double distToPosX = (center.getX() + size) - loc.getX();
+            double distToNegX = loc.getX() - (center.getX() - size);
+            double distToPosZ = (center.getZ() + size) - loc.getZ();
+            double distToNegZ = loc.getZ() - (center.getZ() - size);
+
+            double minDist = Math.min(Math.min(distToPosX, distToNegX), Math.min(distToPosZ, distToNegZ));
+
+            // Jeśli gracz jest 15 kratek od borderu lub bliżej
+            if (minDist <= 15.0 && minDist > 0) {
+                p.sendMessage(ChatColor.RED + "⚠ " + ChatColor.BOLD + "UWAGA: Border jest tylko " + (int)minDist + " bloków od Ciebie!");
+                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
+            }
+        }
+    }
+
     private void generateSmallArena() {
         World world = Bukkit.getWorlds().get(0);
-        int radius = 50; // Mniejszy promien idealny dla 8 graczy
+        int radius = 50; 
         int ceilingY = 40;
         int floorY = -60;
 
-        Bukkit.broadcastMessage(ChatColor.YELLOW + "⛏ Generowanie malej areny (100x100)...");
+        Bukkit.broadcastMessage(ChatColor.YELLOW + "⛏ Przygotowywanie areny...");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
-                
-                // Sufit z bedrocka
                 world.getBlockAt(x, ceilingY, z).setType(Material.BEDROCK);
 
                 for (int y = floorY; y < ceilingY; y++) {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    // Wypelnienie surowcami (bez jaskin)
                     if (chance < 0.05) block.setType(Material.ANCIENT_DEBRIS);
                     else if (chance < 0.15) block.setType(Material.DIAMOND_ORE);
                     else if (chance < 0.35) block.setType(Material.GOLD_ORE);
@@ -68,7 +91,7 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
         }
-        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Mala arena gotowa!");
+        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena gotowa!");
     }
 
     private void startMatch() {
@@ -76,16 +99,13 @@ public class CaveWars extends JavaPlugin implements Listener {
         WorldBorder border = world.getWorldBorder();
         
         border.setCenter(0, 0);
-        border.setSize(100); // Startowa wielkosc zgodna z arena
-        border.setSize(6, 480); // Kurczenie do 6 kratek w 8 minut (szybsza gra)
+        border.setSize(100); 
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Losowanie pozycji wewnatrz malej areny
             int x = random.nextInt(80) - 40;
             int z = random.nextInt(80) - 40;
             Location loc = new Location(world, x, 35, z);
             
-            // Bezpieczny start
             loc.getBlock().setType(Material.AIR);
             loc.clone().add(0, 1, 0).getBlock().setType(Material.AIR);
             
@@ -93,15 +113,19 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
             
-            // Wybalansowany zestaw startowy
             p.getInventory().addItem(new ItemStack(Material.IRON_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
             p.getInventory().addItem(new ItemStack(Material.TORCH, 32));
             
-            p.sendMessage(ChatColor.RED + "Mala arena! Walka zaraz sie zacznie!");
+            p.sendMessage(ChatColor.GOLD + "⭐ Masz 1 MINUTĘ na kopanie przed ruszeniem borderu!");
             p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
         }
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            border.setSize(6, 480);
+            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border zaczął się kurczyć!");
+        }, 1200L); 
     }
 
     @EventHandler

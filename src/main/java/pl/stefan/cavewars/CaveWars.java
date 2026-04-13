@@ -46,7 +46,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void generateFullOreArena() {
         World world = Bukkit.getWorlds().get(0);
-        int radius = 100; // Zmniejszone do 100 dla wydajności (możesz zwiększyć)
+        int radius = 100; 
         int ceilingY = 40;
         int floorY = -60;
 
@@ -62,29 +62,28 @@ public class CaveWars extends JavaPlugin implements Listener {
                 for (int y = floorY; y < ceilingY; y++) {
                     Block block = world.getBlockAt(x, y, z);
                     
-                    // Zostawiamy jaskinie (powietrze), by gracze mieli gdzie biegać
                     if (block.getType() == Material.AIR) continue;
 
                     double chance = random.nextDouble();
 
-                    // PROCENTOWE SZANSE NA RUDY (Wszystko pod bedrockiem staje się rudą)
+                    // Generator rud (Full Ore World)
                     if (chance < 0.03) { 
-                        block.setType(Material.ANCIENT_DEBRIS); // 3% na Debris
+                        block.setType(Material.ANCIENT_DEBRIS);
                     } else if (chance < 0.10) { 
-                        block.setType(Material.DIAMOND_ORE);    // 7% na Diamenty
+                        block.setType(Material.DIAMOND_ORE);
                     } else if (chance < 0.25) { 
-                        block.setType(Material.GOLD_ORE);       // 15% na Złoto
+                        block.setType(Material.GOLD_ORE);
                     } else if (chance < 0.55) { 
-                        block.setType(Material.IRON_ORE);       // 30% na Żelazo
+                        block.setType(Material.IRON_ORE);
                     } else if (chance < 0.80) { 
-                        block.setType(Material.COAL_ORE);       // 25% na Węgiel
+                        block.setType(Material.COAL_ORE);
                     } else {
-                        block.setType(Material.LAPIS_ORE);      // Reszta to Lapis
+                        block.setType(Material.LAPIS_ORE);
                     }
                 }
             }
         }
-        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena wygenerowana! Ściany są pełne skarbów!");
+        Bukkit.broadcastMessage(ChatColor.GREEN + "✅ Arena wygenerowana!");
     }
 
     private void startMatch() {
@@ -93,10 +92,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         
         border.setCenter(0, 0);
         border.setSize(200); 
-        border.setSize(10, 600); // Zmniejszanie do 10 kratek w 10 minut
+        border.setSize(10, 600); // 10 minut do końca
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Losowy teleport pod sufit z bedrocka
             int x = random.nextInt(160) - 80;
             int z = random.nextInt(160) - 80;
             Location loc = new Location(world, x, 30, z);
@@ -105,13 +103,14 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
             
-            // Zestaw startowy
             p.getInventory().addItem(new ItemStack(Material.IRON_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
             
-            p.sendMessage(ChatColor.BOLD + "" + ChatColor.DARK_RED + "CAVE WARS WYSTARTOWAŁO!");
-            p.playSound(p.getLocation(), Sound.UI_GOAT_HORN_PLAY_WAR_CRY, 1, 1);
+            p.sendMessage(ChatColor.DARK_RED + "" + ChatColor.BOLD + "CAVE WARS WYSTARTOWAŁO!");
+            
+            // POPRAWIONY DŹWIĘK (Naprawia błąd kompilacji z obrazka)
+            p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
         }
     }
 
@@ -120,23 +119,24 @@ public class CaveWars extends JavaPlugin implements Listener {
         Block b = event.getBlock();
         Player p = event.getPlayer();
 
-        // --- AUTO SMELT ---
+        // Auto-smelt dla Żelaza
         if (b.getType() == Material.IRON_ORE || b.getType() == Material.DEEPSLATE_IRON_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.IRON_INGOT));
             p.giveExp(1);
         }
         
+        // Auto-smelt dla Złota
         if (b.getType() == Material.GOLD_ORE || b.getType() == Material.DEEPSLATE_GOLD_ORE) {
             event.setDropItems(false);
             b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.GOLD_INGOT));
             p.giveExp(2);
         }
 
-        // --- EFEKT DLA DEBRIS ---
+        // Efekt dla Debris
         if (b.getType() == Material.ANCIENT_DEBRIS) {
             p.sendMessage(ChatColor.LIGHT_PURPLE + "⛏ Znalazłeś cenny Debris!");
-            p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1, 1);
+            p.playSound(p.getLocation(), Sound.BLOCK_AMETHYST_BLOCK_CHIME, 1.0f, 1.0f);
         }
     }
 

@@ -20,61 +20,32 @@ import java.util.UUID;
 public class CaveWars extends JavaPlugin implements Listener {
 
     private final Random random = new Random();
-    // Mapa do przechowywania czasu ostatniego powiadomienia dla każdego gracza
     private final HashMap<UUID, Long> lastWarningTime = new HashMap<>();
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        // Sprawdzanie dystansu co sekundę
         Bukkit.getScheduler().runTaskTimer(this, this::checkBorderDistance, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Slower Border + Anti-Spam) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Low Arena & Rare Debris) aktywowany!");
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("cwstart") && sender.isOp()) {
-            generateFullResourceArena();
+            generateBalancedArena();
             startMatchWithRooms();
             return true;
         }
         return false;
     }
 
-    private void checkBorderDistance() {
-        long currentTime = System.currentTimeMillis();
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.getGameMode() != GameMode.SURVIVAL) continue;
-
-            WorldBorder border = p.getWorld().getWorldBorder();
-            double size = border.getSize() / 2;
-            Location center = border.getCenter();
-            Location loc = p.getLocation();
-
-            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
-                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
-
-            // Jeśli gracz jest blisko borderu (15 kratek)
-            if (minDist <= 15.0 && minDist > 0) {
-                long lastNotify = lastWarningTime.getOrDefault(p.getUniqueId(), 0L);
-                
-                // Sprawdzanie czy minęło 12 sekund (12000 ms) od ostatniej wiadomości
-                if (currentTime - lastNotify >= 12000) {
-                    p.sendMessage(ChatColor.RED + "⚠ Border jest blisko! (" + (int)minDist + " bloków)");
-                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
-                    lastWarningTime.put(p.getUniqueId(), currentTime);
-                }
-            }
-        }
-    }
-
-    private void generateFullResourceArena() {
+    private void generateBalancedArena() {
         World world = Bukkit.getWorlds().get(0);
         int radius = 50; 
-        int ceilingY = 40;
-        int floorY = -60;
+        int ceilingY = 20; // Obniżony sufit
+        int floorY = -30;   // Podniesiona podłoga (łącznie 50 kratek wysokości)
 
-        Bukkit.broadcastMessage(ChatColor.GOLD + "⛏ Generowanie mapy zasobów...");
+        Bukkit.broadcastMessage(ChatColor.GOLD + "⛏ Generowanie areny (Wysokość 50, Rzadszy Debris)...");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
@@ -83,8 +54,9 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    if (chance < 0.04) block.setType(Material.ANCIENT_DEBRIS);
-                    else if (chance < 0.10) block.setType(Material.DIAMOND_ORE);
+                    // NOWY ZBALANSOWANY GENERATOR
+                    if (chance < 0.015) block.setType(Material.ANCIENT_DEBRIS); // RZADKI (1.5%)
+                    else if (chance < 0.085) block.setType(Material.DIAMOND_ORE); // LEKKO MNIEJ (7%)
                     else if (chance < 0.20) block.setType(Material.GOLD_ORE);
                     else if (chance < 0.35) block.setType(Material.IRON_ORE);
                     else if (chance < 0.45) block.setType(Material.OAK_LOG);
@@ -107,8 +79,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         for (Player p : Bukkit.getOnlinePlayers()) {
             int x = random.nextInt(70) - 35;
             int z = random.nextInt(70) - 35;
-            int y = 20;
+            int y = -5; // Środek nowej, niższej areny
 
+            // Pokój 3x3x3
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
@@ -125,17 +98,40 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
-            p.getInventory().addItem(new ItemStack(Material.TORCH, 16));
             
-            p.sendMessage(ChatColor.AQUA + "Start! Masz minutę spokoju.");
+            p.sendMessage(ChatColor.AQUA + "Start! Debris jest teraz rzadszy, szukaj uważnie!");
             p.playSound(p.getLocation(), Sound.EVENT_RAID_HORN, 1.0f, 1.0f);
         }
 
-        // SPOWOLNIONY BORDER: 15 minut (900 sekund)
+        // Spowolniony border (15 min)
         Bukkit.getScheduler().runTaskLater(this, () -> {
             border.setSize(6, 900); 
-            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył (wolne tempo - 15 min)!");
+            Bukkit.broadcastMessage(ChatColor.RED + "⚠ Border ruszył!");
         }, 1200L); 
+    }
+
+    private void checkBorderDistance() {
+        long currentTime = System.currentTimeMillis();
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getGameMode() != GameMode.SURVIVAL) continue;
+
+            WorldBorder border = p.getWorld().getWorldBorder();
+            double size = border.getSize() / 2;
+            Location center = border.getCenter();
+            Location loc = p.getLocation();
+
+            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
+                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
+
+            if (minDist <= 15.0 && minDist > 0) {
+                long lastNotify = lastWarningTime.getOrDefault(p.getUniqueId(), 0L);
+                if (currentTime - lastNotify >= 12000) { // Max 5 razy na minutę
+                    p.sendMessage(ChatColor.RED + "⚠ Border jest blisko! (" + (int)minDist + " bloków)");
+                    p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 2.0f);
+                    lastWarningTime.put(p.getUniqueId(), currentTime);
+                }
+            }
+        }
     }
 
     @EventHandler

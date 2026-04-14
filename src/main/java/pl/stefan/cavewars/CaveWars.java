@@ -16,6 +16,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
@@ -33,60 +34,39 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
+        
+        // Rejestracja customowej receptury na Netherite Ingot
+        registerNetheriteRecipe();
+
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             updateBorderBossBar();
             maintainLevelThirty();
         }, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Clean 3x3 Air Pockets) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Custom Crafting) gotowy!");
     }
 
-    private void maintainLevelThirty() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
-                if (p.getLevel() != 30) {
-                    p.setLevel(30);
-                    p.setExp(0);
-                }
-            }
-        }
+    private void registerNetheriteRecipe() {
+        // Tworzymy wynik rzemiosła: 1 Sztabka Netheritu
+        ItemStack result = new ItemStack(Material.NETHERITE_INGOT);
+
+        // Tworzymy klucz dla receptury (unikalny identyfikator)
+        NamespacedKey key = new NamespacedKey(this, "custom_netherite_ingot");
+
+        // Definiujemy recepturę kształtową
+        ShapedRecipe recipe = new ShapedRecipe(key, result);
+
+        // Układ: DDD, DSD, DDD (D - Diament, S - Scrap)
+        recipe.shape("DDD", "DSD", "DDD");
+
+        // Przypisujemy składniki
+        recipe.setIngredient('D', Material.DIAMOND);
+        recipe.setIngredient('S', Material.NETHERITE_SCRAP);
+
+        // Dodajemy recepturę do serwera
+        Bukkit.addRecipe(recipe);
     }
 
-    private void updateBorderBossBar() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (!p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) || p.getGameMode() == GameMode.SPECTATOR) {
-                removeBossBar(p);
-                continue;
-            }
-
-            WorldBorder border = p.getWorld().getWorldBorder();
-            double size = border.getSize() / 2;
-            Location loc = p.getLocation();
-            Location center = border.getCenter();
-
-            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
-                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
-
-            BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> 
-                Bukkit.createBossBar(ChatColor.WHITE + "Dystans do borderu", BarColor.GREEN, BarStyle.SOLID));
-            
-            bar.addPlayer(p);
-            bar.setVisible(true);
-
-            double progress = Math.max(0, Math.min(1, minDist / 50.0));
-            bar.setProgress(progress);
-
-            if (minDist <= 10) {
-                bar.setColor(BarColor.RED);
-                bar.setTitle(ChatColor.DARK_RED + "⚠ BARDZO BLISKO BORDERU: " + (int)minDist + "m");
-            } else if (minDist <= 25) {
-                bar.setColor(BarColor.YELLOW);
-                bar.setTitle(ChatColor.YELLOW + "Zbliżasz się do krawędzi: " + (int)minDist + "m");
-            } else {
-                bar.setColor(BarColor.GREEN);
-                bar.setTitle(ChatColor.GREEN + "Dystans do borderu: " + (int)minDist + "m");
-            }
-        }
-    }
+    // --- GENEROWANIE I START GRY ---
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
@@ -143,7 +123,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             int z = random.nextInt(60) - 30;
             int y = -5;
 
-            // Wycinanie czystego powietrza 3x3x3 bezpośrednio w arenie
             for (int dx = -1; dx <= 1; dx++) {
                 for (int dy = -1; dy <= 1; dy++) {
                     for (int dz = -1; dz <= 1; dz++) {
@@ -152,7 +131,6 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
 
-            // Teleportacja gracza na spód tej wyciętej dziury (y-1 to podłoga z rudy)
             p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
             
@@ -170,10 +148,42 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 1200L);
     }
 
-    private void broadcastToArena(String message) {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
-                p.sendMessage(message);
+    // --- ZDARZENIA (EVENTS) ---
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player p = event.getPlayer();
+        Block b = event.getBlock();
+        if (!b.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) return;
+
+        Material type = b.getType();
+        ItemStack itemToAdd = null;
+
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) {
+            itemToAdd = new ItemStack(Material.IRON_INGOT);
+        } else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) {
+            itemToAdd = new ItemStack(Material.GOLD_INGOT);
+        } else if (type == Material.ANCIENT_DEBRIS) {
+            itemToAdd = new ItemStack(Material.NETHERITE_SCRAP); // Auto-smelt dla debris
+        } else if (type == Material.OAK_LEAVES) {
+            if (random.nextDouble() < 0.33) itemToAdd = new ItemStack(Material.APPLE);
+        } else {
+            for (ItemStack drop : b.getDrops(p.getInventory().getItemInMainHand())) {
+                addItemToPlayer(p, drop, b.getLocation());
+            }
+            event.setDropItems(false);
+            return;
+        }
+
+        if (itemToAdd != null) addItemToPlayer(p, itemToAdd, b.getLocation());
+        event.setDropItems(false);
+    }
+
+    private void addItemToPlayer(Player p, ItemStack item, Location loc) {
+        Map<Integer, ItemStack> leftOver = p.getInventory().addItem(item);
+        if (!leftOver.isEmpty()) {
+            for (ItemStack is : leftOver.values()) {
+                loc.getWorld().dropItemNaturally(loc, is);
             }
         }
     }
@@ -211,38 +221,54 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
-        Player p = event.getPlayer();
-        Block b = event.getBlock();
-        if (!b.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) return;
-
-        Material type = b.getType();
-        ItemStack itemToAdd = null;
-
-        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) {
-            itemToAdd = new ItemStack(Material.IRON_INGOT);
-        } else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) {
-            itemToAdd = new ItemStack(Material.GOLD_INGOT);
-        } else if (type == Material.OAK_LEAVES) {
-            if (random.nextDouble() < 0.33) itemToAdd = new ItemStack(Material.APPLE);
-        } else {
-            for (ItemStack drop : b.getDrops(p.getInventory().getItemInMainHand())) {
-                addItemToPlayer(p, drop, b.getLocation());
+    private void maintainLevelThirty() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
+                if (p.getLevel() != 30) {
+                    p.setLevel(30);
+                    p.setExp(0);
+                }
             }
-            event.setDropItems(false);
-            return;
         }
-
-        if (itemToAdd != null) addItemToPlayer(p, itemToAdd, b.getLocation());
-        event.setDropItems(false);
     }
 
-    private void addItemToPlayer(Player p, ItemStack item, Location loc) {
-        Map<Integer, ItemStack> leftOver = p.getInventory().addItem(item);
-        if (!leftOver.isEmpty()) {
-            for (ItemStack is : leftOver.values()) {
-                loc.getWorld().dropItemNaturally(loc, is);
+    private void updateBorderBossBar() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (!p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) || p.getGameMode() == GameMode.SPECTATOR) {
+                removeBossBar(p);
+                continue;
+            }
+
+            WorldBorder border = p.getWorld().getWorldBorder();
+            double size = border.getSize() / 2;
+            Location loc = p.getLocation();
+            Location center = border.getCenter();
+
+            double minDist = Math.min(Math.min((center.getX() + size) - loc.getX(), loc.getX() - (center.getX() - size)), 
+                                     Math.min((center.getZ() + size) - loc.getZ(), loc.getZ() - (center.getZ() - size)));
+
+            BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> 
+                Bukkit.createBossBar(ChatColor.WHITE + "Dystans do borderu", BarColor.GREEN, BarStyle.SOLID));
+            
+            bar.addPlayer(p);
+            bar.setVisible(true);
+
+            double progress = Math.max(0, Math.min(1, minDist / 50.0));
+            bar.setProgress(progress);
+
+            if (minDist <= 10) {
+                bar.setColor(BarColor.RED);
+                bar.setTitle(ChatColor.DARK_RED + "⚠ BARDZO BLISKO BORDERU: " + (int)minDist + "m");
+            } else {
+                bar.setColor(BarColor.GREEN);
+            }
+        }
+    }
+
+    private void broadcastToArena(String message) {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
+                p.sendMessage(message);
             }
         }
     }

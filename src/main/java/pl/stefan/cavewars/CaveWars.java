@@ -31,13 +31,30 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        Bukkit.getScheduler().runTaskTimer(this, this::updateBorderBossBar, 10L, 10L);
-        getLogger().info("CaveWars 1.21.4 (Final Fixes) aktywowany!");
+        
+        // Timer obsługujący BossBar oraz STAŁY 30 LEVEL
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            updateBorderBossBar();
+            maintainLevelThirty();
+        }, 20L, 20L); // Raz na sekundę
+        
+        getLogger().info("CaveWars 1.21.4 (Infinite XP Edition) aktywowany!");
+    }
+
+    // Nowa metoda utrzymująca 30 poziom u graczy na arenie
+    private void maintainLevelThirty() {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
+                if (p.getLevel() != 30) {
+                    p.setLevel(30);
+                    p.setExp(0); // Czysty 30 level bez dodatkowych punktów paska
+                }
+            }
+        }
     }
 
     private void updateBorderBossBar() {
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Sprawdzamy, czy gracz jest na arenie i czy żyje
             if (!p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) || p.getGameMode() == GameMode.SPECTATOR) {
                 removeBossBar(p);
                 continue;
@@ -62,7 +79,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
             if (minDist <= 10) {
                 bar.setColor(BarColor.RED);
-                bar.setTitle(ChatColor.DARK_RED + "" + ChatColor.BOLD + "BARDZO BLISKO BORDERU: " + (int)minDist + "m");
+                bar.setTitle(ChatColor.DARK_RED + "⚠ BARDZO BLISKO BORDERU: " + (int)minDist + "m");
             } else if (minDist <= 25) {
                 bar.setColor(BarColor.YELLOW);
                 bar.setTitle(ChatColor.YELLOW + "Zbliżasz się do krawędzi: " + (int)minDist + "m");
@@ -123,7 +140,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         border.setSize(100); 
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            // Startujemy tylko graczy, którzy są na właściwym świecie lub w lobby
             int x = random.nextInt(70) - 35;
             int z = random.nextInt(70) - 35;
             int y = -5;
@@ -138,13 +154,14 @@ public class CaveWars extends JavaPlugin implements Listener {
 
             p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
+            p.setLevel(30); // Ustawienie levelu na start
             p.getInventory().clear();
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
             
-            p.sendMessage(ChatColor.AQUA + "Gra wystartowała!");
+            p.sendMessage(ChatColor.AQUA + "Masz nieskończony 30 level! Możesz zaklinać przedmioty bez limitu.");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -153,7 +170,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 1200L);
     }
 
-    // Pomocnicza metoda do wysyłania wiadomości tylko graczom na arenie
     private void broadcastToArena(String message) {
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
@@ -168,9 +184,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
             p.setGameMode(GameMode.SPECTATOR);
             removeBossBar(p);
-            
-            // Wiadomość o śmierci tylko dla osób na arenie
-            event.setDeathMessage(null); // Wyłączamy globalną wiadomość
+            event.setDeathMessage(null);
             broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " został wyeliminowany!");
         }
     }
@@ -178,7 +192,6 @@ public class CaveWars extends JavaPlugin implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player p = event.getPlayer();
-        // Jeśli gracz wychodzi z serwera będąc w trakcie gry na arenie
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
             p.setGameMode(GameMode.SPECTATOR);
             removeBossBar(p);

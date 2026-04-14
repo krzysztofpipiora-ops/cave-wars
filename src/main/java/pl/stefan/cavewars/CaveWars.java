@@ -14,6 +14,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.LeavesDecayEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
@@ -36,61 +37,8 @@ public class CaveWars extends JavaPlugin implements Listener {
             updateBorderBossBar();
             maintainLevelThirty();
         }, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Auto-Pickup & Hardcore) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Respawn to Lobby) gotowy!");
     }
-
-    // --- MECHANIZM AUTO-PICKUP ---
-    @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
-        Player p = event.getPlayer();
-        Block b = event.getBlock();
-        
-        // Działaj tylko na świecie areny
-        if (!b.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) return;
-
-        Material type = b.getType();
-        ItemStack itemToAdd = null;
-
-        // 1. Logika specjalnych dropów (Auto-Smelt)
-        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) {
-            itemToAdd = new ItemStack(Material.IRON_INGOT);
-        } else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) {
-            itemToAdd = new ItemStack(Material.GOLD_INGOT);
-        } else if (type == Material.OAK_LEAVES) {
-            if (random.nextDouble() < 0.33) {
-                itemToAdd = new ItemStack(Material.APPLE);
-            }
-        } else {
-            // 2. Standardowy drop dla reszty bloków (np. diamenty, węgiel, kamień)
-            // Pobieramy to, co naturalnie wypadłoby z bloku
-            for (ItemStack drop : b.getDrops(p.getInventory().getItemInMainHand())) {
-                addItemToPlayer(p, drop, b.getLocation());
-            }
-            event.setDropItems(false); // Blokujemy naturalny drop
-            return;
-        }
-
-        // 3. Dodawanie specjalnego przedmiotu do ekwipunku
-        if (itemToAdd != null) {
-            addItemToPlayer(p, itemToAdd, b.getLocation());
-        }
-        
-        event.setDropItems(false); // Blokujemy naturalny drop
-    }
-
-    // Pomocnicza metoda: dodaje do EQ, a jeśli pełne - wyrzuca na ziemię
-    private void addItemToPlayer(Player p, ItemStack item, Location loc) {
-        Map<Integer, ItemStack> leftOver = p.getInventory().addItem(item);
-        
-        // Jeśli mapa nie jest pusta, oznacza to, że ekwipunek jest pełny
-        if (!leftOver.isEmpty()) {
-            for (ItemStack is : leftOver.values()) {
-                loc.getWorld().dropItemNaturally(loc, is);
-            }
-        }
-    }
-
-    // --- RESZTA KODU (BossBar, Generator, itp.) ---
 
     private void maintainLevelThirty() {
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -160,8 +108,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         int ceilingY = 20; 
         int floorY = -30;
 
-        broadcastToArena(ChatColor.DARK_PURPLE + "⛏ Generowanie areny... Pamiętaj: przedmioty trafiają od razu do EQ!");
-
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 world.getBlockAt(x, ceilingY, z).setType(Material.BEDROCK);
@@ -230,10 +176,28 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onDeath(PlayerDeathEvent event) {
         Player p = event.getEntity();
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
-            p.setGameMode(GameMode.SPECTATOR);
             removeBossBar(p);
             event.setDeathMessage(null);
-            broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " został wyeliminowany!");
+            broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " odpadł z areny!");
+            
+            // Gracz po śmierci zostanie przeniesiony na spawn (obsłużone w onRespawn)
+        }
+    }
+
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent event) {
+        Player p = event.getPlayer();
+        // Jeśli gracz respawnuje się po śmierci na świecie areny
+        if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
+            // Ustawiamy miejsce odrodzenia na spawn głównego świata (lobby)
+            World lobbyWorld = Bukkit.getWorlds().get(0);
+            event.setRespawnLocation(lobbyWorld.getSpawnLocation());
+            
+            // Opcjonalnie zmieniamy tryb na Adventure po odrodzeniu
+            Bukkit.getScheduler().runTaskLater(this, () -> {
+                p.setGameMode(GameMode.ADVENTURE);
+                p.sendMessage(ChatColor.YELLOW + "Odpadłeś! Witaj z powrotem w lobby.");
+            }, 5L);
         }
     }
 
@@ -241,9 +205,47 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onQuit(PlayerQuitEvent event) {
         Player p = event.getPlayer();
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
-            p.setGameMode(GameMode.SPECTATOR);
             removeBossBar(p);
-            broadcastToArena(ChatColor.RED + "❌ Gracz " + p.getName() + " wyszedł z gry i został wyeliminowany!");
+            // Teleportujemy go na spawn lobby, żeby po ponownym wejściu nie był na arenie
+            p.teleport(Bukkit.getWorlds().get(0).getSpawnLocation());
+            p.setGameMode(GameMode.ADVENTURE);
+            broadcastToArena(ChatColor.RED + "❌ Gracz " + p.getName() + " opuścił arenę.");
+        }
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player p = event.getPlayer();
+        Block b = event.getBlock();
+        if (!b.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) return;
+
+        Material type = b.getType();
+        ItemStack itemToAdd = null;
+
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) {
+            itemToAdd = new ItemStack(Material.IRON_INGOT);
+        } else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) {
+            itemToAdd = new ItemStack(Material.GOLD_INGOT);
+        } else if (type == Material.OAK_LEAVES) {
+            if (random.nextDouble() < 0.33) itemToAdd = new ItemStack(Material.APPLE);
+        } else {
+            for (ItemStack drop : b.getDrops(p.getInventory().getItemInMainHand())) {
+                addItemToPlayer(p, drop, b.getLocation());
+            }
+            event.setDropItems(false);
+            return;
+        }
+
+        if (itemToAdd != null) addItemToPlayer(p, itemToAdd, b.getLocation());
+        event.setDropItems(false);
+    }
+
+    private void addItemToPlayer(Player p, ItemStack item, Location loc) {
+        Map<Integer, ItemStack> leftOver = p.getInventory().addItem(item);
+        if (!leftOver.isEmpty()) {
+            for (ItemStack is : leftOver.values()) {
+                loc.getWorld().dropItemNaturally(loc, is);
+            }
         }
     }
 
@@ -254,8 +256,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void removeBossBar(Player p) {
         BossBar bar = playerBossBars.remove(p.getUniqueId());
-        if (bar != null) {
-            bar.removeAll();
-        }
+        if (bar != null) bar.removeAll();
     }
 }

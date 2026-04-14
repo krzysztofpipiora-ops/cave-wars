@@ -37,7 +37,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             updateBorderBossBar();
             maintainLevelThirty();
         }, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (New Arena - New Tools) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Clean 3x3 Air Pockets) gotowy!");
     }
 
     private void maintainLevelThirty() {
@@ -96,19 +96,17 @@ public class CaveWars extends JavaPlugin implements Listener {
                 sender.sendMessage(ChatColor.RED + "BŁĄD: Świat '" + WORLD_NAME + "' nie istnieje!");
                 return true;
             }
-            generateOnlyResourcesArena(gameWorld);
-            startMatchWithRooms(gameWorld);
+            generateSolidArena(gameWorld);
+            startMatchInAirRooms(gameWorld);
             return true;
         }
         return false;
     }
 
-    private void generateOnlyResourcesArena(World world) {
+    private void generateSolidArena(World world) {
         int radius = 50; 
         int ceilingY = 20; 
         int floorY = -30;
-
-        broadcastToArena(ChatColor.GOLD + "⛏ Generowanie nowej areny...");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
@@ -119,46 +117,51 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    block.setType(Material.AIR);
-
-                    if (chance < 0.004) block.setType(Material.ANCIENT_DEBRIS);
-                    else if (chance < 0.034) block.setType(Material.DIAMOND_ORE);
-                    else if (chance < 0.114) block.setType(Material.GOLD_ORE);
-                    else if (chance < 0.25) block.setType(Material.IRON_ORE);
-                    else if (chance < 0.28) block.setType(Material.OBSIDIAN);
-                    else if (chance < 0.31) block.setType(Material.BOOKSHELF);
-                    else if (chance < 0.38) block.setType(Material.OAK_LOG);
-                    else if (chance < 0.43) block.setType(Material.OAK_LEAVES);
-                    else if (chance < 0.46) block.setType(Material.GLOWSTONE);
-                    else if (chance < 0.55) block.setType(Material.COAL_ORE);
-                    else if (chance < 0.60) block.setType(Material.LAPIS_ORE);
+                    if (chance < 0.006) block.setType(Material.ANCIENT_DEBRIS);
+                    else if (chance < 0.07) block.setType(Material.DIAMOND_ORE);
+                    else if (chance < 0.17) block.setType(Material.GOLD_ORE);
+                    else if (chance < 0.38) block.setType(Material.IRON_ORE);
+                    else if (chance < 0.43) block.setType(Material.OBSIDIAN);
+                    else if (chance < 0.48) block.setType(Material.BOOKSHELF);
+                    else if (chance < 0.58) block.setType(Material.OAK_LOG);
+                    else if (chance < 0.68) block.setType(Material.OAK_LEAVES);
+                    else if (chance < 0.73) block.setType(Material.GLOWSTONE);
+                    else if (chance < 0.88) block.setType(Material.COAL_ORE);
+                    else block.setType(Material.LAPIS_ORE); 
                 }
             }
         }
     }
 
-    private void startMatchWithRooms(World world) {
+    private void startMatchInAirRooms(World world) {
         WorldBorder border = world.getWorldBorder();
         border.setCenter(0, 0);
         border.setSize(100); 
 
         for (Player p : Bukkit.getOnlinePlayers()) {
-            int x = random.nextInt(70) - 35;
-            int z = random.nextInt(70) - 35;
+            int x = random.nextInt(60) - 30;
+            int z = random.nextInt(60) - 30;
             int y = -5;
 
+            // Wycinanie czystego powietrza 3x3x3 bezpośrednio w arenie
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        world.getBlockAt(x + dx, y + dy, z + dz).setType(Material.AIR);
+                    }
+                }
+            }
+
+            // Teleportacja gracza na spód tej wyciętej dziury (y-1 to podłoga z rudy)
             p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
             
-            // --- WYDAWANIE NOWYCH NARZĘDZI TYLKO TUTAJ ---
             p.getInventory().clear();
             p.getInventory().setArmorContents(null);
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
-            
-            p.sendMessage(ChatColor.GREEN + "Otrzymałeś startowy ekwipunek na nową arenę!");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -182,7 +185,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             removeBossBar(p);
             event.setDeathMessage(null);
             broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " odpadł!");
-            // Ekwipunek zostanie wyczyszczony przy odrodzeniu
         }
     }
 
@@ -192,12 +194,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
             World lobbyWorld = Bukkit.getWorlds().get(0);
             event.setRespawnLocation(lobbyWorld.getSpawnLocation());
-            
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 p.setGameMode(GameMode.ADVENTURE);
-                p.getInventory().clear(); // Czysty EQ po śmierci w lobby
-                p.setLevel(0);
-                p.setExp(0);
+                p.getInventory().clear();
             }, 5L);
         }
     }
@@ -209,7 +208,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             removeBossBar(p);
             p.teleport(Bukkit.getWorlds().get(0).getSpawnLocation());
             p.setGameMode(GameMode.ADVENTURE);
-            p.getInventory().clear();
         }
     }
 

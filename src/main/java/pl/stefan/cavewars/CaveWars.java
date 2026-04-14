@@ -19,6 +19,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 
@@ -35,8 +36,61 @@ public class CaveWars extends JavaPlugin implements Listener {
             updateBorderBossBar();
             maintainLevelThirty();
         }, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Hardcore Economy) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (Auto-Pickup & Hardcore) gotowy!");
     }
+
+    // --- MECHANIZM AUTO-PICKUP ---
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player p = event.getPlayer();
+        Block b = event.getBlock();
+        
+        // Działaj tylko na świecie areny
+        if (!b.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) return;
+
+        Material type = b.getType();
+        ItemStack itemToAdd = null;
+
+        // 1. Logika specjalnych dropów (Auto-Smelt)
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) {
+            itemToAdd = new ItemStack(Material.IRON_INGOT);
+        } else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) {
+            itemToAdd = new ItemStack(Material.GOLD_INGOT);
+        } else if (type == Material.OAK_LEAVES) {
+            if (random.nextDouble() < 0.33) {
+                itemToAdd = new ItemStack(Material.APPLE);
+            }
+        } else {
+            // 2. Standardowy drop dla reszty bloków (np. diamenty, węgiel, kamień)
+            // Pobieramy to, co naturalnie wypadłoby z bloku
+            for (ItemStack drop : b.getDrops(p.getInventory().getItemInMainHand())) {
+                addItemToPlayer(p, drop, b.getLocation());
+            }
+            event.setDropItems(false); // Blokujemy naturalny drop
+            return;
+        }
+
+        // 3. Dodawanie specjalnego przedmiotu do ekwipunku
+        if (itemToAdd != null) {
+            addItemToPlayer(p, itemToAdd, b.getLocation());
+        }
+        
+        event.setDropItems(false); // Blokujemy naturalny drop
+    }
+
+    // Pomocnicza metoda: dodaje do EQ, a jeśli pełne - wyrzuca na ziemię
+    private void addItemToPlayer(Player p, ItemStack item, Location loc) {
+        Map<Integer, ItemStack> leftOver = p.getInventory().addItem(item);
+        
+        // Jeśli mapa nie jest pusta, oznacza to, że ekwipunek jest pełny
+        if (!leftOver.isEmpty()) {
+            for (ItemStack is : leftOver.values()) {
+                loc.getWorld().dropItemNaturally(loc, is);
+            }
+        }
+    }
+
+    // --- RESZTA KODU (BossBar, Generator, itp.) ---
 
     private void maintainLevelThirty() {
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -106,7 +160,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         int ceilingY = 20; 
         int floorY = -30;
 
-        broadcastToArena(ChatColor.DARK_PURPLE + "⛏ Generowanie hardkorowej areny... Powodzenia w szukaniu diamentów!");
+        broadcastToArena(ChatColor.DARK_PURPLE + "⛏ Generowanie areny... Pamiętaj: przedmioty trafiają od razu do EQ!");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
@@ -115,18 +169,17 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    // --- NOWY ZBALANSOWANY SYSTEM SZANS ---
-                    if (chance < 0.004) block.setType(Material.ANCIENT_DEBRIS); // Ekstremalnie rzadki (0.4%)
-                    else if (chance < 0.034) block.setType(Material.DIAMOND_ORE); // Rzadki (3%)
-                    else if (chance < 0.114) block.setType(Material.GOLD_ORE); // (8%)
-                    else if (chance < 0.25) block.setType(Material.IRON_ORE); // (ok. 13%)
+                    if (chance < 0.004) block.setType(Material.ANCIENT_DEBRIS);
+                    else if (chance < 0.034) block.setType(Material.DIAMOND_ORE);
+                    else if (chance < 0.114) block.setType(Material.GOLD_ORE);
+                    else if (chance < 0.25) block.setType(Material.IRON_ORE);
                     else if (chance < 0.28) block.setType(Material.OBSIDIAN);
                     else if (chance < 0.31) block.setType(Material.BOOKSHELF);
                     else if (chance < 0.38) block.setType(Material.OAK_LOG);
                     else if (chance < 0.43) block.setType(Material.OAK_LEAVES);
                     else if (chance < 0.46) block.setType(Material.GLOWSTONE);
                     else if (chance < 0.55) block.setType(Material.COAL_ORE);
-                    else block.setType(Material.STONE); // 45% szansy na zwykły kamień (puste miejsca)
+                    else block.setType(Material.STONE);
                 }
             }
         }
@@ -157,8 +210,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
-            
-            p.sendMessage(ChatColor.RED + "UWAGA: Surowce są rzadkie! Walcz o każdą rudę.");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -193,22 +244,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.setGameMode(GameMode.SPECTATOR);
             removeBossBar(p);
             broadcastToArena(ChatColor.RED + "❌ Gracz " + p.getName() + " wyszedł z gry i został wyeliminowany!");
-        }
-    }
-
-    @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
-        Block b = event.getBlock();
-        if (b.getType() == Material.OAK_LEAVES && random.nextDouble() < 0.33) {
-            b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.APPLE));
-        }
-        if (b.getType() == Material.IRON_ORE || b.getType() == Material.DEEPSLATE_IRON_ORE) {
-            event.setDropItems(false);
-            b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.IRON_INGOT));
-        }
-        if (b.getType() == Material.GOLD_ORE || b.getType() == Material.DEEPSLATE_GOLD_ORE) {
-            event.setDropItems(false);
-            b.getWorld().dropItemNaturally(b.getLocation(), new ItemStack(Material.GOLD_INGOT));
         }
     }
 

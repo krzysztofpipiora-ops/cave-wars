@@ -37,7 +37,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             updateBorderBossBar();
             maintainLevelThirty();
         }, 20L, 20L);
-        getLogger().info("CaveWars 1.21.4 (Respawn to Lobby) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (New Arena - New Tools) gotowy!");
     }
 
     private void maintainLevelThirty() {
@@ -96,24 +96,30 @@ public class CaveWars extends JavaPlugin implements Listener {
                 sender.sendMessage(ChatColor.RED + "BŁĄD: Świat '" + WORLD_NAME + "' nie istnieje!");
                 return true;
             }
-            generateHardcoreArena(gameWorld);
+            generateOnlyResourcesArena(gameWorld);
             startMatchWithRooms(gameWorld);
             return true;
         }
         return false;
     }
 
-    private void generateHardcoreArena(World world) {
+    private void generateOnlyResourcesArena(World world) {
         int radius = 50; 
         int ceilingY = 20; 
         int floorY = -30;
 
+        broadcastToArena(ChatColor.GOLD + "⛏ Generowanie nowej areny...");
+
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
                 world.getBlockAt(x, ceilingY, z).setType(Material.BEDROCK);
+                world.getBlockAt(x, floorY - 1, z).setType(Material.BEDROCK);
+
                 for (int y = floorY; y < ceilingY; y++) {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
+
+                    block.setType(Material.AIR);
 
                     if (chance < 0.004) block.setType(Material.ANCIENT_DEBRIS);
                     else if (chance < 0.034) block.setType(Material.DIAMOND_ORE);
@@ -125,7 +131,7 @@ public class CaveWars extends JavaPlugin implements Listener {
                     else if (chance < 0.43) block.setType(Material.OAK_LEAVES);
                     else if (chance < 0.46) block.setType(Material.GLOWSTONE);
                     else if (chance < 0.55) block.setType(Material.COAL_ORE);
-                    else block.setType(Material.STONE);
+                    else if (chance < 0.60) block.setType(Material.LAPIS_ORE);
                 }
             }
         }
@@ -141,21 +147,18 @@ public class CaveWars extends JavaPlugin implements Listener {
             int z = random.nextInt(70) - 35;
             int y = -5;
 
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        world.getBlockAt(x + dx, y + dy, z + dz).setType(Material.AIR);
-                    }
-                }
-            }
-
             p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
+            
+            // --- WYDAWANIE NOWYCH NARZĘDZI TYLKO TUTAJ ---
             p.getInventory().clear();
+            p.getInventory().setArmorContents(null);
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
+            
+            p.sendMessage(ChatColor.GREEN + "Otrzymałeś startowy ekwipunek na nową arenę!");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -178,25 +181,23 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
             removeBossBar(p);
             event.setDeathMessage(null);
-            broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " odpadł z areny!");
-            
-            // Gracz po śmierci zostanie przeniesiony na spawn (obsłużone w onRespawn)
+            broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " odpadł!");
+            // Ekwipunek zostanie wyczyszczony przy odrodzeniu
         }
     }
 
     @EventHandler
     public void onRespawn(PlayerRespawnEvent event) {
         Player p = event.getPlayer();
-        // Jeśli gracz respawnuje się po śmierci na świecie areny
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
-            // Ustawiamy miejsce odrodzenia na spawn głównego świata (lobby)
             World lobbyWorld = Bukkit.getWorlds().get(0);
             event.setRespawnLocation(lobbyWorld.getSpawnLocation());
             
-            // Opcjonalnie zmieniamy tryb na Adventure po odrodzeniu
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 p.setGameMode(GameMode.ADVENTURE);
-                p.sendMessage(ChatColor.YELLOW + "Odpadłeś! Witaj z powrotem w lobby.");
+                p.getInventory().clear(); // Czysty EQ po śmierci w lobby
+                p.setLevel(0);
+                p.setExp(0);
             }, 5L);
         }
     }
@@ -204,12 +205,11 @@ public class CaveWars extends JavaPlugin implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player p = event.getPlayer();
-        if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
+        if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
             removeBossBar(p);
-            // Teleportujemy go na spawn lobby, żeby po ponownym wejściu nie był na arenie
             p.teleport(Bukkit.getWorlds().get(0).getSpawnLocation());
             p.setGameMode(GameMode.ADVENTURE);
-            broadcastToArena(ChatColor.RED + "❌ Gracz " + p.getName() + " opuścił arenę.");
+            p.getInventory().clear();
         }
     }
 

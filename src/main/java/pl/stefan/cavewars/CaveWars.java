@@ -31,23 +31,19 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        
-        // Timer obsługujący BossBar oraz STAŁY 30 LEVEL
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             updateBorderBossBar();
             maintainLevelThirty();
-        }, 20L, 20L); // Raz na sekundę
-        
-        getLogger().info("CaveWars 1.21.4 (Infinite XP Edition) aktywowany!");
+        }, 20L, 20L);
+        getLogger().info("CaveWars 1.21.4 (Hardcore Economy) gotowy!");
     }
 
-    // Nowa metoda utrzymująca 30 poziom u graczy na arenie
     private void maintainLevelThirty() {
         for (Player p : Bukkit.getOnlinePlayers()) {
             if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME) && p.getGameMode() == GameMode.SURVIVAL) {
                 if (p.getLevel() != 30) {
                     p.setLevel(30);
-                    p.setExp(0); // Czysty 30 level bez dodatkowych punktów paska
+                    p.setExp(0);
                 }
             }
         }
@@ -98,17 +94,19 @@ public class CaveWars extends JavaPlugin implements Listener {
                 sender.sendMessage(ChatColor.RED + "BŁĄD: Świat '" + WORLD_NAME + "' nie istnieje!");
                 return true;
             }
-            generateAdvancedArena(gameWorld);
+            generateHardcoreArena(gameWorld);
             startMatchWithRooms(gameWorld);
             return true;
         }
         return false;
     }
 
-    private void generateAdvancedArena(World world) {
+    private void generateHardcoreArena(World world) {
         int radius = 50; 
         int ceilingY = 20; 
         int floorY = -30;
+
+        broadcastToArena(ChatColor.DARK_PURPLE + "⛏ Generowanie hardkorowej areny... Powodzenia w szukaniu diamentów!");
 
         for (int x = -radius; x <= radius; x++) {
             for (int z = -radius; z <= radius; z++) {
@@ -117,18 +115,18 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block block = world.getBlockAt(x, y, z);
                     double chance = random.nextDouble();
 
-                    if (chance < 0.015) block.setType(Material.ANCIENT_DEBRIS);
-                    else if (chance < 0.08) block.setType(Material.DIAMOND_ORE);
-                    else if (chance < 0.18) block.setType(Material.GOLD_ORE);
-                    else if (chance < 0.30) block.setType(Material.IRON_ORE);
-                    else if (chance < 0.35) block.setType(Material.OBSIDIAN);
-                    else if (chance < 0.40) block.setType(Material.BOOKSHELF);
-                    else if (chance < 0.50) block.setType(Material.OAK_LOG);
-                    else if (chance < 0.60) block.setType(Material.OAK_LEAVES);
-                    else if (chance < 0.65) block.setType(Material.GLASS);
-                    else if (chance < 0.70) block.setType(Material.GLOWSTONE);
-                    else if (chance < 0.85) block.setType(Material.COAL_ORE);
-                    else block.setType(Material.LAPIS_ORE);
+                    // --- NOWY ZBALANSOWANY SYSTEM SZANS ---
+                    if (chance < 0.004) block.setType(Material.ANCIENT_DEBRIS); // Ekstremalnie rzadki (0.4%)
+                    else if (chance < 0.034) block.setType(Material.DIAMOND_ORE); // Rzadki (3%)
+                    else if (chance < 0.114) block.setType(Material.GOLD_ORE); // (8%)
+                    else if (chance < 0.25) block.setType(Material.IRON_ORE); // (ok. 13%)
+                    else if (chance < 0.28) block.setType(Material.OBSIDIAN);
+                    else if (chance < 0.31) block.setType(Material.BOOKSHELF);
+                    else if (chance < 0.38) block.setType(Material.OAK_LOG);
+                    else if (chance < 0.43) block.setType(Material.OAK_LEAVES);
+                    else if (chance < 0.46) block.setType(Material.GLOWSTONE);
+                    else if (chance < 0.55) block.setType(Material.COAL_ORE);
+                    else block.setType(Material.STONE); // 45% szansy na zwykły kamień (puste miejsca)
                 }
             }
         }
@@ -154,14 +152,13 @@ public class CaveWars extends JavaPlugin implements Listener {
 
             p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
             p.setGameMode(GameMode.SURVIVAL);
-            p.setLevel(30); // Ustawienie levelu na start
             p.getInventory().clear();
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
             p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
             p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
             p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
             
-            p.sendMessage(ChatColor.AQUA + "Masz nieskończony 30 level! Możesz zaklinać przedmioty bez limitu.");
+            p.sendMessage(ChatColor.RED + "UWAGA: Surowce są rzadkie! Walcz o każdą rudę.");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {

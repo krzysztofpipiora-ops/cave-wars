@@ -37,15 +37,75 @@ public class CaveWars extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
         registerNetheriteRecipe();
 
-        // Główny timer odświeżający interfejs i mechaniki
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             updateBorderBossBar();
             maintainLevelThirty();
-            updateCompassTarget(); // Nowa funkcja śledzenia graczy
+            updateCompassTarget();
         }, 20L, 20L);
         
-        getLogger().info("CaveWars 1.21.4 (Player Tracker Compass) gotowy!");
+        getLogger().info("CaveWars 1.21.4 (World-Specific Start) gotowy!");
     }
+
+    // --- KLUCZOWA ZMIANA: FILTROWANIE GRACZY ZE ŚWIATA ARENY ---
+    private void startMatchInAirRooms(World world) {
+        WorldBorder border = world.getWorldBorder();
+        border.setCenter(0, 0);
+        border.setSize(100); 
+
+        int playersJoined = 0;
+
+        // Iterujemy po wszystkich graczach, ale sprawdzamy ich świat
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            // Sprawdzamy, czy gracz jest w świecie "cavewars"
+            if (!p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
+                continue; 
+            }
+
+            playersJoined++;
+
+            int x = random.nextInt(60) - 30;
+            int z = random.nextInt(60) - 30;
+            int y = -5;
+
+            // Wycinanie dziury 3x3x3
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        world.getBlockAt(x + dx, y + dy, z + dz).setType(Material.AIR);
+                    }
+                }
+            }
+
+            p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
+            p.setGameMode(GameMode.SURVIVAL);
+            
+            p.getInventory().clear();
+            p.getInventory().setArmorContents(null);
+            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
+            p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
+            p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
+            p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
+            
+            ItemStack tracker = new ItemStack(Material.COMPASS);
+            ItemMeta meta = tracker.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName(ChatColor.RED + "" + ChatColor.BOLD + "Wykrywacz Graczy");
+                tracker.setItemMeta(meta);
+            }
+            p.getInventory().addItem(tracker);
+
+            p.sendMessage(ChatColor.GREEN + "Arena wystartowała! Powodzenia.");
+        }
+
+        broadcastToArena(ChatColor.YELLOW + "Do gry dołączyło: " + ChatColor.WHITE + playersJoined + " graczy.");
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            border.setSize(6, 900);
+            broadcastToArena(ChatColor.RED + "⚠ Border ruszył!");
+        }, 1200L);
+    }
+
+    // --- RESZTA MECHANIK (RECEPTURY, KOMPASY, BLOKI) ---
 
     private void updateCompassTarget() {
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -55,7 +115,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             double nearestDist = Double.MAX_VALUE;
 
             for (Player target : Bukkit.getOnlinePlayers()) {
-                if (p.equals(target) || !target.getWorld().equals(p.getWorld()) || target.getGameMode() != GameMode.SURVIVAL) continue;
+                if (p.equals(target) || !target.getWorld().getName().equals(p.getWorld().getName()) || target.getGameMode() != GameMode.SURVIVAL) continue;
 
                 double dist = p.getLocation().distance(target.getLocation());
                 if (dist < nearestDist) {
@@ -66,7 +126,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
             if (nearest != null) {
                 p.setCompassTarget(nearest.getLocation());
-                // Opcjonalnie: wyświetlanie informacji nad paskiem ekwipunku
                 p.sendActionBar(ChatColor.GOLD + "Kompas wskazuje: " + ChatColor.WHITE + nearest.getName() + 
                                 ChatColor.GRAY + " (" + (int)nearestDist + "m)");
             }
@@ -87,53 +146,15 @@ public class CaveWars extends JavaPlugin implements Listener {
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (command.getName().equalsIgnoreCase("cwstart") && sender.isOp()) {
             World gameWorld = Bukkit.getWorld(WORLD_NAME);
-            if (gameWorld == null) return true;
+            if (gameWorld == null) {
+                sender.sendMessage("Świat " + WORLD_NAME + " nie istnieje!");
+                return true;
+            }
             generateSolidArena(gameWorld);
             startMatchInAirRooms(gameWorld);
             return true;
         }
         return false;
-    }
-
-    private void startMatchInAirRooms(World world) {
-        WorldBorder border = world.getWorldBorder();
-        border.setCenter(0, 0);
-        border.setSize(100); 
-
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            int x = random.nextInt(60) - 30;
-            int z = random.nextInt(60) - 30;
-            int y = -5;
-
-            for (int dx = -1; dx <= 1; dx++) {
-                for (int dy = -1; dy <= 1; dy++) {
-                    for (int dz = -1; dz <= 1; dz++) {
-                        world.getBlockAt(x + dx, y + dy, z + dz).setType(Material.AIR);
-                    }
-                }
-            }
-
-            p.teleport(new Location(world, x + 0.5, y - 0.5, z + 0.5));
-            p.setGameMode(GameMode.SURVIVAL);
-            
-            p.getInventory().clear();
-            p.getInventory().setArmorContents(null);
-            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE));
-            p.getInventory().addItem(new ItemStack(Material.STONE_AXE));
-            p.getInventory().addItem(new ItemStack(Material.BREAD, 32));
-            p.getInventory().addItem(new ItemStack(Material.CRAFTING_TABLE));
-            
-            // --- DODANIE KOMPASU NA START ---
-            ItemStack tracker = new ItemStack(Material.COMPASS);
-            ItemMeta meta = tracker.getItemMeta();
-            if (meta != null) {
-                meta.setDisplayName(ChatColor.RED + "" + ChatColor.BOLD + "Wykrywacz Graczy");
-                tracker.setItemMeta(meta);
-            }
-            p.getInventory().addItem(tracker);
-        }
-
-        Bukkit.getScheduler().runTaskLater(this, () -> border.setSize(6, 900), 1200L);
     }
 
     private void generateSolidArena(World world) {
@@ -207,6 +228,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
             removeBossBar(p);
             event.setDeathMessage(null);
+            broadcastToArena(ChatColor.RED + "☠ Gracz " + p.getName() + " odpadł!");
         }
     }
 
@@ -258,6 +280,14 @@ public class CaveWars extends JavaPlugin implements Listener {
             bar.setProgress(Math.max(0, Math.min(1, minDist / 50.0)));
             if (minDist <= 10) bar.setColor(BarColor.RED);
             else bar.setColor(BarColor.GREEN);
+        }
+    }
+
+    private void broadcastToArena(String message) {
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getWorld().getName().equalsIgnoreCase(WORLD_NAME)) {
+                p.sendMessage(message);
+            }
         }
     }
 

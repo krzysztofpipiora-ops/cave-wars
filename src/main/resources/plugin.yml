@@ -1,9 +1,11 @@
 name: CaveWars
 version: 1.0
 main: pl.stefan.cavewars.CaveWars
-api-version: '1.21'
+api-version: 1.21 # lub wersja Twojego serwera
 commands:
   cwstart:
-    description: Startuje arene CaveWars
+    description: Startuje arene CaveWars w aktualnym świecie.
+    permission: cavewars.admin
   cwstop:
-    description: Zatrzymuje arene CaveWars
+    description: Zatrzymuje aktualną gre i pokazuje wyniki.
+    permission: cavewars.admin

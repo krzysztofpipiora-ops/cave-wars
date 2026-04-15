@@ -4,5 +4,6 @@ main: pl.stefan.cavewars.CaveWars
 api-version: '1.21'
 commands:
   cwstart:
-    description: Startuje rozgrywkę CaveWars
-    permission: cavewars.admin
+    description: Startuje arene CaveWars
+  cwstop:
+    description: Zatrzymuje arene CaveWars

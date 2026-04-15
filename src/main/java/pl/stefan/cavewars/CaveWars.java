@@ -39,7 +39,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(this, this);
         registerNetheriteRecipe();
         
-        // Główny procesor wszystkich aktywnych aren
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
                 if (arena.active) updateArena(arena);
@@ -59,43 +58,30 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (command.getName().equalsIgnoreCase("cwstart") && sender instanceof Player p && p.isOp()) {
+        if (!(sender instanceof Player p) || !p.isOp()) return false;
+
+        if (command.getName().equalsIgnoreCase("cwstart")) {
             World world = p.getWorld();
             ArenaData arena = arenas.computeIfAbsent(world.getUID(), k -> new ArenaData(world));
             if (arena.active) { p.sendMessage(ChatColor.RED + "Gra tutaj już trwa!"); return true; }
             
-            p.sendMessage(ChatColor.GREEN + "Generowanie areny...");
+            p.sendMessage(ChatColor.GREEN + "Startowanie areny w tym świecie...");
             generateSolidArena(world);
             startMatch(arena);
             return true;
         }
-        return false;
-    }
 
-    private void generateSolidArena(World world) {
-        int radius = 50;
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
-                world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
-                for (int y = -30; y < 20; y++) {
-                    Block block = world.getBlockAt(x, y, z);
-                    double chance = random.nextDouble();
-                    // Pełna lista surowców (nic nie usunięte)
-                    if (chance < 0.006) block.setType(Material.ANCIENT_DEBRIS);
-                    else if (chance < 0.07) block.setType(Material.DIAMOND_ORE);
-                    else if (chance < 0.17) block.setType(Material.GOLD_ORE);
-                    else if (chance < 0.38) block.setType(Material.IRON_ORE);
-                    else if (chance < 0.43) block.setType(Material.OBSIDIAN);
-                    else if (chance < 0.48) block.setType(Material.BOOKSHELF);
-                    else if (chance < 0.58) block.setType(Material.OAK_LOG);
-                    else if (chance < 0.68) block.setType(Material.OAK_LEAVES);
-                    else if (chance < 0.73) block.setType(Material.GLOWSTONE);
-                    else if (chance < 0.88) block.setType(Material.COAL_ORE);
-                    else block.setType(Material.LAPIS_ORE);
-                }
+        if (command.getName().equalsIgnoreCase("cwstop")) {
+            ArenaData arena = arenas.get(p.getWorld().getUID());
+            if (arena == null || !arena.active) {
+                p.sendMessage(ChatColor.RED + "W tym świecie nie trwa żadna gra.");
+                return true;
             }
+            p.sendMessage(ChatColor.YELLOW + "Zatrzymywanie areny przez administratora...");
+            endGame(arena, null);
+            return true;
         }
+        return false;
     }
 
     private void startMatch(ArenaData arena) {
@@ -105,9 +91,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.world.getWorldBorder().setSize(100);
 
         for (Player p : arena.world.getPlayers()) {
+            // KLUCZOWE: Tylko gracze w świecie admina, którzy nie są obserwatorami
+            if (p.getGameMode() == GameMode.SPECTATOR) continue;
+
             arena.kills.put(p.getUniqueId(), 0);
             
-            // Pokój 3x3x3 z powietrza
             Location loc = new Location(arena.world, random.nextInt(60)-30, -5, random.nextInt(60)-30);
             for(int x=-1; x<=1; x++) for(int y=-1; y<=1; y++) for(int z=-1; z<=1; z++) 
                 loc.clone().add(x,y,z).getBlock().setType(Material.AIR);
@@ -126,14 +114,13 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void updateArena(ArenaData arena) {
-        List<Player> players = arena.world.getPlayers();
-        for (Player p : players) {
+        for (Player p : arena.world.getPlayers()) {
             if (p.getGameMode() != GameMode.SURVIVAL) continue;
             if (p.getLevel() != 30) p.setLevel(30);
             
             // Kompas
             Player nearest = null; double dMin = Double.MAX_VALUE;
-            for (Player target : players) {
+            for (Player target : arena.world.getPlayers()) {
                 if (p.equals(target) || target.getGameMode() != GameMode.SURVIVAL) continue;
                 double d = p.getLocation().distance(target.getLocation());
                 if (d < dMin) { dMin = d; nearest = target; }
@@ -177,7 +164,9 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void endGame(ArenaData arena, Player winner) {
+        if (!arena.active) return;
         arena.active = false;
+        
         String winnerName = (winner != null) ? winner.getName() : "Brak";
         List<Map.Entry<UUID, Integer>> top = arena.kills.entrySet().stream()
                 .sorted((a, b) -> b.getValue().compareTo(a.getValue())).limit(3).collect(Collectors.toList());
@@ -203,7 +192,8 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
-        if (arenas.containsKey(event.getBlock().getWorld().getUID())) {
+        ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
+        if (arena != null && arena.active) {
             Block b = event.getBlock(); Player p = event.getPlayer(); Material t = b.getType();
             ItemStack drop = null;
             if (t == Material.IRON_ORE || t == Material.DEEPSLATE_IRON_ORE) drop = new ItemStack(Material.IRON_INGOT);
@@ -212,6 +202,31 @@ public class CaveWars extends JavaPlugin implements Listener {
             else if (t == Material.OAK_LEAVES && random.nextDouble() < 0.3) drop = new ItemStack(Material.APPLE);
             
             if (drop != null) { p.getInventory().addItem(drop); event.setDropItems(false); }
+        }
+    }
+
+    private void generateSolidArena(World world) {
+        int radius = 50;
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
+                world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
+                for (int y = -30; y < 20; y++) {
+                    Block block = world.getBlockAt(x, y, z);
+                    double chance = random.nextDouble();
+                    if (chance < 0.006) block.setType(Material.ANCIENT_DEBRIS);
+                    else if (chance < 0.07) block.setType(Material.DIAMOND_ORE);
+                    else if (chance < 0.17) block.setType(Material.GOLD_ORE);
+                    else if (chance < 0.38) block.setType(Material.IRON_ORE);
+                    else if (chance < 0.43) block.setType(Material.OBSIDIAN);
+                    else if (chance < 0.48) block.setType(Material.BOOKSHELF);
+                    else if (chance < 0.58) block.setType(Material.OAK_LOG);
+                    else if (chance < 0.68) block.setType(Material.OAK_LEAVES);
+                    else if (chance < 0.73) block.setType(Material.GLOWSTONE);
+                    else if (chance < 0.88) block.setType(Material.COAL_ORE);
+                    else block.setType(Material.LAPIS_ORE);
+                }
+            }
         }
     }
 

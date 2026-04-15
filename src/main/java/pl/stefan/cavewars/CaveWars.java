@@ -12,13 +12,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
-import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.*;
@@ -30,25 +30,28 @@ public class CaveWars extends JavaPlugin implements Listener {
     private final Map<UUID, ArenaData> arenas = new HashMap<>();
     private final Map<UUID, BossBar> playerBossBars = new HashMap<>();
     private final List<UUID> registeredWorlds = new ArrayList<>();
-    private final String SPAWN_WORLD_NAME = "world"; // Twoja nazwa świata spawna
+    private final String SPAWN_WORLD_NAME = "world";
 
     private static class ArenaData {
         World world;
         Map<UUID, Integer> kills = new HashMap<>();
         boolean active = false;
         int countdown = -1;
+        int pvpGraceTime = 0; 
+        List<Location> spawnPoints = new ArrayList<>();
         ArenaData(World world) { this.world = world; }
     }
 
     @Override
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
-        registerNetheriteRecipe();
+        registerCustomRecipes();
         
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
                 if (arena.active) {
                     updateActiveArena(arena);
+                    if (arena.pvpGraceTime > 0) arena.pvpGraceTime--;
                 } else if (registeredWorlds.contains(arena.world.getUID())) {
                     handleLobbyCountdown(arena);
                 }
@@ -56,23 +59,74 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 20L, 20L);
     }
 
+    // --- SYSTEM CRAFTINGU NETHERITE (BEZ TEMPLATE) ---
+    private void registerCustomRecipes() {
+        addNetheriteUpgrade(Material.NETHERITE_INGOT, Material.NETHERITE_SCRAP, Material.DIAMOND, "cw_n_ing");
+        addNetheriteUpgrade(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
+        addNetheriteUpgrade(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
+        addNetheriteUpgrade(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");
+        addNetheriteUpgrade(Material.NETHERITE_SHOVEL, Material.DIAMOND_SHOVEL, Material.NETHERITE_INGOT, "cw_n_sh");
+        addNetheriteUpgrade(Material.NETHERITE_HELMET, Material.DIAMOND_HELMET, Material.NETHERITE_INGOT, "cw_n_he");
+        addNetheriteUpgrade(Material.NETHERITE_CHESTPLATE, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_INGOT, "cw_n_ch");
+        addNetheriteUpgrade(Material.NETHERITE_LEGGINGS, Material.DIAMOND_LEGGINGS, Material.NETHERITE_INGOT, "cw_n_le");
+        addNetheriteUpgrade(Material.NETHERITE_BOOTS, Material.DIAMOND_BOOTS, Material.NETHERITE_INGOT, "cw_n_bo");
+    }
+
+    private void addNetheriteUpgrade(Material res, Material i1, Material i2, String k) {
+        ShapedRecipe r = new ShapedRecipe(new NamespacedKey(this, k), new ItemStack(res));
+        r.shape("AB"); 
+        r.setIngredient('A', i1); 
+        r.setIngredient('B', i2);
+        Bukkit.addRecipe(r);
+    }
+
+    // --- GENERATOR ARENY (PEŁNA PULA BLOKÓW) ---
+    private void generateSolidArena(World world) {
+        int radius = 50;
+        for (int x = -radius; x <= radius; x++) {
+            for (int z = -radius; z <= radius; z++) {
+                world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
+                world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
+                for (int y = -30; y < 20; y++) {
+                    Block b = world.getBlockAt(x, y, z);
+                    double c = random.nextDouble();
+                    if (c < 0.006) b.setType(Material.ANCIENT_DEBRIS);
+                    else if (c < 0.05) b.setType(Material.DIAMOND_ORE);
+                    else if (c < 0.12) b.setType(Material.GOLD_ORE);
+                    else if (c < 0.25) b.setType(Material.IRON_ORE);
+                    else if (c < 0.30) b.setType(Material.OBSIDIAN);
+                    else if (c < 0.35) b.setType(Material.BOOKSHELF);
+                    else if (c < 0.45) b.setType(Material.OAK_LOG);
+                    else if (c < 0.55) b.setType(Material.OAK_LEAVES);
+                    else if (c < 0.60) b.setType(Material.GLOWSTONE);
+                    else if (c < 0.80) b.setType(Material.COAL_ORE);
+                    else if (c < 0.90) b.setType(Material.LAPIS_ORE);
+                    else b.setType(Material.STONE);
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPvP(EntityDamageByEntityEvent event) {
+        if (event.getEntity() instanceof Player && event.getDamager() instanceof Player) {
+            ArenaData arena = arenas.get(event.getEntity().getWorld().getUID());
+            if (arena != null && arena.active && arena.pvpGraceTime > 0) {
+                event.setCancelled(true);
+                event.getDamager().sendMessage(ChatColor.RED + "Ochrona startowa! PvP rusza za: " + arena.pvpGraceTime + "s");
+            }
+        }
+    }
+
     private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
-        if (count < 2) {
-            arena.countdown = -1;
-            return;
-        }
-
+        if (count < 2) { arena.countdown = -1; return; }
         if (arena.countdown == -1) arena.countdown = 80;
-        if (count >= 8 && arena.countdown > 15) {
-            arena.countdown = 15;
-            broadcastToWorld(arena.world, ChatColor.LIGHT_PURPLE + "Arena pełna! Start za 15 sekund.");
-        }
+        if (count >= 8 && arena.countdown > 15) arena.countdown = 15;
 
         if (arena.countdown > 0) {
-            if (arena.countdown % 10 == 0 || arena.countdown <= 5) {
+            if (arena.countdown % 10 == 0 || arena.countdown <= 5)
                 broadcastToWorld(arena.world, ChatColor.YELLOW + "Start za: " + ChatColor.WHITE + arena.countdown + "s");
-            }
             arena.countdown--;
         } else if (arena.countdown == 0) {
             arena.countdown = -1;
@@ -81,223 +135,44 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    @Override
-    public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (!(sender instanceof Player p)) return false;
-
-        if (command.getName().equalsIgnoreCase("cw") || command.getName().equalsIgnoreCase("cavewars")) {
-            joinBestArena(p);
-            return true;
-        }
-
-        if (!p.isOp()) return false;
-
-        if (command.getName().equalsIgnoreCase("cwcreate")) {
-            UUID id = p.getWorld().getUID();
-            if (!registeredWorlds.contains(id)) {
-                registeredWorlds.add(id);
-                arenas.put(id, new ArenaData(p.getWorld()));
-                p.sendMessage(ChatColor.GREEN + "Świat " + p.getWorld().getName() + " zarejestrowany!");
-            }
-            return true;
-        }
-
-        if (command.getName().equalsIgnoreCase("cwstop")) {
-            ArenaData arena = arenas.get(p.getWorld().getUID());
-            if (arena != null && arena.active) endGame(arena, null);
-            return true;
-        }
-        return false;
-    }
-
-    private void joinBestArena(Player p) {
-        for (UUID id : registeredWorlds) {
-            ArenaData arena = arenas.get(id);
-            if (arena != null && !arena.active && arena.world.getPlayers().size() < 8) {
-                p.teleport(arena.world.getSpawnLocation());
-                p.setGameMode(GameMode.ADVENTURE);
-                p.sendMessage(ChatColor.GREEN + "Dołączyłeś do " + arena.world.getName());
-                return;
-            }
-        }
-        p.sendMessage(ChatColor.RED + "Brak wolnych miejsc!");
-    }
-
-    private void generateSolidArena(World world) {
-        int radius = 50;
-        for (int x = -radius; x <= radius; x++) {
-            for (int z = -radius; z <= radius; z++) {
-                world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
-                world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
-                for (int y = -30; y < 20; y++) {
-                    Block block = world.getBlockAt(x, y, z);
-                    double chance = random.nextDouble();
-                    
-                    if (chance < 0.015) { 
-                        block.setType(Material.CHEST);
-                        fillChest((Chest) block.getState());
-                    } 
-                    else if (chance < 0.12) block.setType(Material.IRON_ORE);
-                    else if (chance < 0.20) block.setType(Material.GOLD_ORE);
-                    else if (chance < 0.25) block.setType(Material.DIAMOND_ORE);
-                    else if (chance < 0.30) block.setType(Material.ANCIENT_DEBRIS);
-                    else if (chance < 0.45) block.setType(Material.OAK_LOG);
-                    else block.setType(Material.COAL_ORE);
-                }
-            }
-        }
-    }
-
-    private void fillChest(Chest chest) {
-        Inventory inv = chest.getInventory();
-        Material[] loot = {
-            Material.IRON_SWORD, Material.GOLDEN_APPLE, Material.DIAMOND, Material.IRON_CHESTPLATE,
-            Material.BOW, Material.ARROW, Material.GOLDEN_CARROT, Material.BREAD, 
-            Material.SHIELD, Material.DIAMOND_PICKAXE, Material.EXPERIENCE_BOTTLE, 
-            Material.POTION, Material.SPLASH_POTION, Material.IRON_INGOT
-        };
-
-        int itemsCount = random.nextInt(4) + 3; 
-        for (int i = 0; i < itemsCount; i++) {
-            inv.setItem(random.nextInt(inv.getSize()), new ItemStack(loot[random.nextInt(loot.length)], random.nextInt(3) + 1));
-        }
-    }
-
     private void startMatch(ArenaData arena) {
         arena.active = true;
-        arena.kills.clear();
+        arena.pvpGraceTime = 180; 
+        arena.spawnPoints.clear();
         arena.world.getWorldBorder().setCenter(0, 0);
         arena.world.getWorldBorder().setSize(100);
 
         for (Player p : arena.world.getPlayers()) {
-            arena.kills.put(p.getUniqueId(), 0);
-            Location loc = new Location(arena.world, random.nextInt(60)-30, -5, random.nextInt(60)-30);
-            
+            Location loc = findSafeSpawn(arena);
+            arena.spawnPoints.add(loc);
             for(int x=-1; x<=1; x++) for(int y=-1; y<=1; y++) for(int z=-1; z<=1; z++) 
                 loc.clone().add(x,y,z).getBlock().setType(Material.AIR);
-
-            p.teleport(loc.add(0.5, -0.5, 0.5));
+            
+            p.teleport(loc.add(0.5, 0, 0.5));
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
-            p.setExp(0); p.setLevel(30);
+            p.setLevel(30);
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 16));
         }
-        Bukkit.getScheduler().runTaskLater(this, () -> arena.world.getWorldBorder().setSize(6, 900), 1200L);
-    }
-
-    @EventHandler
-    public void onDeath(PlayerDeathEvent event) {
-        Player victim = event.getEntity();
-        ArenaData arena = arenas.get(victim.getWorld().getUID());
-        if (arena == null || !arena.active) return;
-
-        event.getDrops().clear(); 
-        victim.getInventory().clear();
-        victim.setExp(0); victim.setLevel(0);
         
-        Player killer = victim.getKiller();
-        if (killer != null) arena.kills.put(killer.getUniqueId(), arena.kills.getOrDefault(killer.getUniqueId(), 0) + 1);
-
-        Bukkit.getScheduler().runTaskLater(this, () -> checkWinner(arena), 1L);
-    }
-
-    @EventHandler
-    public void onRespawn(PlayerRespawnEvent event) {
-        World spawnWorld = Bukkit.getWorld(SPAWN_WORLD_NAME);
-        if (spawnWorld != null) {
-            event.setRespawnLocation(spawnWorld.getSpawnLocation());
-        }
-        event.getPlayer().setGameMode(GameMode.ADVENTURE);
-    }
-
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
-        Player p = event.getPlayer();
-        ArenaData arena = arenas.get(p.getWorld().getUID());
-        if (arena != null && arena.active && p.getGameMode() == GameMode.SURVIVAL) {
-            p.setHealth(0); 
-        }
-        removeBossBar(p);
-    }
-
-    private void checkWinner(ArenaData arena) {
-        List<Player> alive = arena.world.getPlayers().stream()
-                .filter(p -> p.getGameMode() == GameMode.SURVIVAL).collect(Collectors.toList());
+        broadcastToWorld(arena.world, ChatColor.GREEN + "Gra rozpoczęta! 3 minuty ochrony i spokoju borderu.");
         
-        if (alive.size() <= 1 && arena.active) {
-            endGame(arena, alive.isEmpty() ? null : alive.get(0));
-        }
-    }
-
-    private void endGame(ArenaData arena, Player winner) {
-        if (!arena.active) return;
-        arena.active = false;
-        
-        String name = (winner != null) ? winner.getName() : "Brak";
-        broadcastToWorld(arena.world, ChatColor.GOLD + "WYGRANA: " + ChatColor.WHITE + name);
-        
-        List<Map.Entry<UUID, Integer>> top = arena.kills.entrySet().stream()
-                .sorted((a, b) -> b.getValue().compareTo(a.getValue())).limit(3).collect(Collectors.toList());
-
-        for (Player p : arena.world.getPlayers()) {
-            p.sendMessage(ChatColor.AQUA + "--- TOP ZABÓJSTW ---");
-            for (int i = 0; i < top.size(); i++) {
-                p.sendMessage((i+1) + ". " + Bukkit.getOfflinePlayer(top.get(i).getKey()).getName() + " - " + top.get(i).getValue());
-            }
-        }
-
         Bukkit.getScheduler().runTaskLater(this, () -> {
-            World spawnWorld = Bukkit.getWorld(SPAWN_WORLD_NAME);
-            Location spawnLoc = (spawnWorld != null) ? spawnWorld.getSpawnLocation() : arena.world.getSpawnLocation();
-            
-            for (Player p : arena.world.getPlayers()) {
-                p.getInventory().clear();
-                p.setExp(0); p.setLevel(0);
-                p.teleport(spawnLoc);
-                p.setGameMode(GameMode.ADVENTURE);
-                removeBossBar(p);
+            if (arena.active) {
+                arena.world.getWorldBorder().setSize(6, 900);
+                broadcastToWorld(arena.world, ChatColor.RED + "Border zaczyna się kurczyć!");
             }
-        }, 100L); 
+        }, 3600L); // 180s * 20t = 3600
     }
 
-    private void updateActiveArena(ArenaData arena) {
-        for (Player p : arena.world.getPlayers()) {
-            if (p.getGameMode() != GameMode.SURVIVAL) {
-                removeBossBar(p);
-                continue;
-            }
-            if (p.getLevel() != 30) p.setLevel(30);
-            updateCompass(p, arena);
-            updateBossBar(p, arena);
+    private Location findSafeSpawn(ArenaData arena) {
+        for (int i = 0; i < 200; i++) {
+            Location loc = new Location(arena.world, random.nextInt(80)-40, -5, random.nextInt(80)-40);
+            boolean far = true;
+            for (Location o : arena.spawnPoints) if (loc.distance(o) < 30) { far = false; break; }
+            if (far) return loc;
         }
-    }
-
-    private void updateCompass(Player p, ArenaData arena) {
-        Player near = null; double dMin = Double.MAX_VALUE;
-        for (Player t : arena.world.getPlayers()) {
-            if (!p.equals(t) && t.getGameMode() == GameMode.SURVIVAL) {
-                double d = p.getLocation().distance(t.getLocation());
-                if (d < dMin) { dMin = d; near = t; }
-            }
-        }
-        if (near != null) {
-            p.setCompassTarget(near.getLocation());
-            p.sendActionBar(ChatColor.GOLD + "Najbliższy gracz: " + ChatColor.WHITE + near.getName() + " (" + (int)dMin + "m)");
-        }
-    }
-
-    private void updateBossBar(Player p, ArenaData arena) {
-        WorldBorder b = arena.world.getWorldBorder();
-        double size = b.getSize() / 2;
-        Location l = p.getLocation();
-        double dist = Math.min(Math.min((b.getCenter().getX() + size) - l.getX(), l.getX() - (b.getCenter().getX() - size)), 
-                               Math.min((b.getCenter().getZ() + size) - l.getZ(), l.getZ() - (b.getCenter().getZ() - size)));
-        
-        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar("Border", BarColor.GREEN, BarStyle.SOLID));
-        bar.addPlayer(p);
-        bar.setProgress(Math.max(0, Math.min(1, dist / 50.0)));
-        bar.setColor(dist <= 10 ? BarColor.RED : BarColor.GREEN);
-        bar.setTitle(ChatColor.WHITE + "Granica za: " + (int)dist + "m");
+        return new Location(arena.world, 0, -5, 0);
     }
 
     @EventHandler
@@ -306,37 +181,153 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (arena == null || !arena.active) return;
         
         Block b = event.getBlock();
-        if (b.getType() == Material.CHEST) return; 
-
-        Material t = b.getType();
-        ItemStack drop = null;
-        if (t == Material.IRON_ORE || t == Material.DEEPSLATE_IRON_ORE) drop = new ItemStack(Material.IRON_INGOT);
-        else if (t == Material.GOLD_ORE || t == Material.DEEPSLATE_GOLD_ORE) drop = new ItemStack(Material.GOLD_INGOT);
-        else if (t == Material.ANCIENT_DEBRIS) drop = new ItemStack(Material.NETHERITE_SCRAP);
-        else if (t == Material.OAK_LEAVES && random.nextDouble() < 0.2) drop = new ItemStack(Material.APPLE);
+        if (random.nextDouble() < 0.005) {
+            b.setType(Material.CHEST);
+            fillChest((Chest) b.getState());
+            event.getPlayer().sendMessage(ChatColor.GOLD + "Znalazłeś skrzynię w bloku!");
+            event.setCancelled(true);
+            return;
+        }
         
-        if (drop != null) {
-            event.getPlayer().getInventory().addItem(drop);
-            event.setDropItems(false);
+        Material t = b.getType();
+        ItemStack d = null;
+        if (t == Material.IRON_ORE || t == Material.DEEPSLATE_IRON_ORE) d = new ItemStack(Material.IRON_INGOT);
+        else if (t == Material.GOLD_ORE || t == Material.DEEPSLATE_GOLD_ORE) d = new ItemStack(Material.GOLD_INGOT);
+        else if (t == Material.ANCIENT_DEBRIS) d = new ItemStack(Material.NETHERITE_SCRAP);
+        
+        if (d != null) { 
+            event.getPlayer().getInventory().addItem(d); 
+            b.setType(Material.AIR); 
+            event.setDropItems(false); 
         }
     }
 
-    private void registerNetheriteRecipe() {
-        ItemStack result = new ItemStack(Material.NETHERITE_INGOT);
-        NamespacedKey key = new NamespacedKey(this, "custom_netherite_ing");
-        ShapedRecipe recipe = new ShapedRecipe(key, result);
-        recipe.shape("DDD", "DSD", "DDD");
-        recipe.setIngredient('D', Material.DIAMOND);
-        recipe.setIngredient('S', Material.NETHERITE_SCRAP);
-        Bukkit.addRecipe(recipe);
+    private void fillChest(Chest c) {
+        Inventory inv = c.getInventory(); 
+        inv.clear();
+        Material[] loot = {
+            Material.IRON_SWORD, Material.GOLDEN_APPLE, Material.DIAMOND, Material.BOW, 
+            Material.ARROW, Material.SHIELD, Material.DIAMOND_PICKAXE, Material.IRON_INGOT,
+            Material.GOLDEN_CARROT, Material.COOKED_BEEF, Material.POTION
+        };
+        int count = random.nextInt(3) + 2;
+        for (int i = 0; i < count; i++) {
+            Material m = loot[random.nextInt(loot.length)];
+            int amt = (m == Material.ARROW || m == Material.COOKED_BEEF) ? 8 : 1;
+            inv.setItem(random.nextInt(inv.getSize()), new ItemStack(m, amt));
+        }
     }
 
-    private void broadcastToWorld(World w, String m) {
-        for (Player p : w.getPlayers()) p.sendMessage(m);
+    @EventHandler
+    public void onDeath(PlayerDeathEvent e) {
+        Player v = e.getEntity();
+        ArenaData a = arenas.get(v.getWorld().getUID());
+        if (a == null || !a.active) return;
+        
+        e.getDrops().clear(); 
+        v.getInventory().clear();
+        v.setExp(0); v.setLevel(0);
+        
+        Bukkit.getScheduler().runTaskLater(this, () -> checkWinner(a), 1L);
     }
 
-    private void removeBossBar(Player p) {
-        BossBar b = playerBossBars.remove(p.getUniqueId());
-        if (b != null) b.removeAll();
+    @EventHandler
+    public void onRespawn(PlayerRespawnEvent e) {
+        World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
+        if (w != null) e.setRespawnLocation(w.getSpawnLocation());
+        e.getPlayer().setGameMode(GameMode.ADVENTURE);
     }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent e) {
+        Player p = e.getPlayer();
+        ArenaData a = arenas.get(p.getWorld().getUID());
+        if (a != null && a.active && p.getGameMode() == GameMode.SURVIVAL) p.setHealth(0);
+        removeBossBar(p);
+    }
+
+    private void checkWinner(ArenaData a) {
+        List<Player> alive = a.world.getPlayers().stream()
+                .filter(p -> p.getGameMode() == GameMode.SURVIVAL).collect(Collectors.toList());
+        if (alive.size() <= 1 && a.active) endGame(a, alive.isEmpty() ? null : alive.get(0));
+    }
+
+    private void endGame(ArenaData a, Player winner) {
+        a.active = false;
+        broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
+        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwycięzca: " + (winner != null ? winner.getName() : "Brak"));
+        
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
+            Location loc = (w != null) ? w.getSpawnLocation() : a.world.getSpawnLocation();
+            for (Player p : a.world.getPlayers()) {
+                p.getInventory().clear(); 
+                p.setExp(0); p.setLevel(0);
+                p.teleport(loc); 
+                p.setGameMode(GameMode.ADVENTURE);
+                removeBossBar(p);
+            }
+        }, 100L);
+    }
+
+    private void updateActiveArena(ArenaData a) {
+        for (Player p : a.world.getPlayers()) {
+            if (p.getGameMode() == GameMode.SURVIVAL) {
+                updateBossBar(p, a);
+                updateCompass(p, a);
+            } else removeBossBar(p);
+        }
+    }
+
+    private void updateBossBar(Player p, ArenaData a) {
+        WorldBorder b = a.world.getWorldBorder();
+        double size = b.getSize() / 2;
+        double dist = Math.min(Math.min((b.getCenter().getX() + size) - p.getLocation().getX(), p.getLocation().getX() - (b.getCenter().getX() - size)), 
+                               Math.min((b.getCenter().getZ() + size) - p.getLocation().getZ(), p.getLocation().getZ() - (b.getCenter().getZ() - size)));
+        
+        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar("Border", BarColor.GREEN, BarStyle.SOLID));
+        bar.addPlayer(p);
+        bar.setProgress(Math.max(0, Math.min(1, dist / 50.0)));
+        bar.setColor(dist <= 10 ? BarColor.RED : BarColor.GREEN);
+    }
+
+    private void updateCompass(Player p, ArenaData a) {
+        Player near = null; double dMin = 999;
+        for (Player t : a.world.getPlayers()) if (!p.equals(t) && t.getGameMode() == GameMode.SURVIVAL) {
+            double d = p.getLocation().distance(t.getLocation());
+            if (d < dMin) { dMin = d; near = t; }
+        }
+        String pvpStatus = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
+        if (near != null) p.sendActionBar(pvpStatus + ChatColor.GOLD + "| Najbliższy: " + near.getName() + " (" + (int)dMin + "m)");
+        else p.sendActionBar(pvpStatus);
+    }
+
+    private void joinBestArena(Player p) {
+        for (UUID id : registeredWorlds) {
+            ArenaData a = arenas.get(id);
+            if (a != null && !a.active && a.world.getPlayers().size() < 8) { 
+                p.teleport(a.world.getSpawnLocation()); 
+                p.setGameMode(GameMode.ADVENTURE); 
+                return; 
+            }
+        }
+        p.sendMessage(ChatColor.RED + "Brak wolnych aren!");
+    }
+
+    @Override
+    public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
+        if (!(s instanceof Player p)) return false;
+        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { joinBestArena(p); return true; }
+        if (!p.isOp()) return false;
+        if (c.getName().equalsIgnoreCase("cwcreate")) { 
+            registeredWorlds.add(p.getWorld().getUID()); 
+            arenas.put(p.getWorld().getUID(), new ArenaData(p.getWorld())); 
+            p.sendMessage(ChatColor.GREEN + "Arena utworzona na " + p.getWorld().getName()); 
+            return true; 
+        }
+        return false;
+    }
+
+    private void broadcastToWorld(World w, String m) { for (Player p : w.getPlayers()) p.sendMessage(m); }
+    private void removeBossBar(Player p) { BossBar b = playerBossBars.remove(p.getUniqueId()); if (b != null) b.removeAll(); }
 }

@@ -46,7 +46,27 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onEnable() {
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
+ }  
+    @Override
+    public void onEnable() {
+        saveDefaultConfig(); // Tworzy plik config.yml jeśli go nie ma
+        Bukkit.getPluginManager().registerEvents(this, this);
+        registerCustomRecipes();
         
+        // --- WCZYTYWANIE AREN Z CONFIGU ---
+        List<String> savedWorlds = getConfig().getStringList("arenas");
+        for (String worldName : savedWorlds) {
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) {
+                registeredWorlds.add(world.getUID());
+                arenas.put(world.getUID(), new ArenaData(world));
+                getLogger().info("Wczytano arene: " + worldName);
+            }
+        }
+        // ----------------------------------
+
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            // ... (reszta Twojego kodu timera)
         // Główna pętla gry (1 sekunda)
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {

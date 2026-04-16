@@ -1,14 +1,12 @@
 name: CaveWars
 version: 1.0
 main: pl.stefan.cavewars.CaveWars
-api-version: 1.21 # lub wersja Twojego serwera
+api-version: 1.20 # Dopasuj do wersji swojej silnika (np. 1.19, 1.20)
 commands:
-  cw:
-    description: Dolacz do najlepszej wolnej areny.
-    aliases: [cavewars]
   cwcreate:
-    description: Oznacza aktualny swiat jako mape do gry.
+    description: Tworzy nową arenę na obecnym świecie.
     permission: cavewars.admin
-  cwstop:
-    description: Zatrzymuje gre.
-    permission: cavewars.admin
+  cw:
+    description: Dołącza do najlepszej wolnej areny.
+  cavewars:
+    description: Alias do cw.

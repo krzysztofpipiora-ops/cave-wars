@@ -336,7 +336,57 @@ public class CaveWars extends JavaPlugin implements Listener {
         } catch (Exception ignored) {}
     }
 
-    // --- GENEROWANIE ARENY ---
+    // --- POPRAWIONA KOMENDA /cw ---
+    @Override
+    public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
+        if (!(s instanceof Player p)) {
+            s.sendMessage(ChatColor.RED + "Tylko gracze mogą używać tej komendy!");
+            return true;
+        }
+
+        if (c.getName().equalsIgnoreCase("cwcreate")) {
+            if (!p.isOp()) {
+                p.sendMessage(ChatColor.RED + "Nie masz uprawnień do tej komendy!");
+                return true;
+            }
+            UUID id = p.getWorld().getUID();
+            if (!registeredWorlds.contains(id)) {
+                registeredWorlds.add(id);
+                arenas.put(id, new ArenaData(p.getWorld()));
+                saveArenas();
+                p.sendMessage(ChatColor.GREEN + "Świat został zapisany jako arena CaveWars!");
+            } else {
+                p.sendMessage(ChatColor.YELLOW + "Ten świat jest już zarejestrowany jako arena.");
+            }
+            return true;
+        }
+
+        if (c.getName().equalsIgnoreCase("cw")) {
+            for (ArenaData a : arenas.values()) {
+                if (!a.active && a.world.getPlayers().size() < 12) {
+                    // Sprawdzenie czy gracz nie jest już na aktywnej arenie
+                    ArenaData currentArena = arenas.get(p.getWorld().getUID());
+                    if (currentArena != null && currentArena.active) {
+                        p.sendMessage(ChatColor.RED + "Już jesteś na aktywnej arenie!");
+                        return true;
+                    }
+
+                    p.teleport(a.world.getSpawnLocation().add(0.5, 1, 0.5));
+                    p.setGameMode(GameMode.ADVENTURE);
+                    p.sendMessage(ChatColor.GREEN + "Dołączyłeś do areny! Czekaj na rozpoczęcie gry...");
+                    return true;
+                }
+            }
+
+            p.sendMessage(ChatColor.RED + "Obecnie nie ma wolnych aren do dołączenia!");
+            p.sendMessage(ChatColor.GRAY + "Spróbuj ponownie za chwilę lub poproś administratora o utworzenie nowej areny (/cwcreate).");
+            return true;
+        }
+
+        return false;
+    }
+
+    // --- GENEROWANIE ARENY (STONE 25% + BOOKSHELF 0.8%) ---
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {
@@ -349,7 +399,7 @@ public class CaveWars extends JavaPlugin implements Listener {
                     double c = random.nextDouble();
 
                     if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);     // 0.8%
-                    else if (c < 0.016) b.setType(Material.BOOKSHELF);     // 0.8%  ← NOWO DODANE
+                    else if (c < 0.016) b.setType(Material.BOOKSHELF);     // 0.8%
                     else if (c < 0.048) b.setType(Material.DIAMOND_ORE);   // 3.2%
                     else if (c < 0.108) b.setType(Material.GOLD_ORE);      // 6.0%
                     else if (c < 0.188) b.setType(Material.IRON_ORE);      // 8.0%

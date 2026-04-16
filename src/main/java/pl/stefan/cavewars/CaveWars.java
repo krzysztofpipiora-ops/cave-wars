@@ -143,7 +143,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     // --- SYSTEM LOBBY I STARTU ---
     private void handleLobbyCountdown(ArenaData arena) {
-        // ... reszta kodu ...
         int count = arena.world.getPlayers().size();
         if (count < 2) { arena.countdown = -1; return; }
         if (arena.countdown == -1) arena.countdown = 60;

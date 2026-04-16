@@ -38,12 +38,15 @@ public class CaveWars extends JavaPlugin implements Listener {
         int countdown = -1;
         int pvpGraceTime = 0; 
         List<Location> spawnPoints = new ArrayList<>();
-        Set<UUID> eliminated = new HashSet<>(); // Lista graczy, którzy odpadli
+        Set<UUID> eliminated = new HashSet<>();
         ArenaData(World world) { this.world = world; }
     }
 
     @Override
     public void onEnable() {
+        saveDefaultConfig(); // Tworzy plik config.yml jeśli nie istnieje
+        loadArenas();        // Wczytuje areny z pliku
+
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
         
@@ -58,6 +61,30 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
         }, 20L, 20L);
+    }
+
+    // Nowa metoda wczytująca areny po starcie
+    private void loadArenas() {
+        List<String> worldNames = getConfig().getStringList("arenas");
+        for (String name : worldNames) {
+            World world = Bukkit.getWorld(name);
+            if (world != null) {
+                registeredWorlds.add(world.getUID());
+                arenas.put(world.getUID(), new ArenaData(world));
+                getLogger().info("Wczytano arenę: " + name);
+            }
+        }
+    }
+
+    // Nowa metoda zapisująca areny
+    private void saveArenas() {
+        List<String> worldNames = new ArrayList<>();
+        for (UUID uuid : registeredWorlds) {
+            World w = Bukkit.getWorld(uuid);
+            if (w != null) worldNames.add(w.getName());
+        }
+        getConfig().set("arenas", worldNames);
+        saveConfig();
     }
 
     private void registerCustomRecipes() {
@@ -169,7 +196,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -5, 0);
     }
 
-@EventHandler
+    @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
@@ -177,7 +204,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Block b = event.getBlock();
         Player p = event.getPlayer();
         
-        // 0.5% szansy na skrzynkę zamiast bloku
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
@@ -186,15 +212,11 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
         
-        // Pobieramy dropy, które normalnie wypadłyby z bloku (z uwzględnieniem kilofa gracza)
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        
-        // Dodajemy każdy przedmiot bezpośrednio do ekwipunku
         for (ItemStack drop : drops) {
             p.getInventory().addItem(drop);
         }
         
-        // Usuwamy blok i blokujemy naturalny drop przedmiotów na ziemię
         b.setType(Material.AIR);
         event.setDropItems(false);
     }
@@ -212,7 +234,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         ArenaData a = arenas.get(v.getWorld().getUID());
         if (a == null || !a.active) return;
         
-        a.eliminated.add(v.getUniqueId()); // Gracz odpada
+        a.eliminated.add(v.getUniqueId());
         e.getDrops().clear(); 
         v.getInventory().clear();
         
@@ -225,7 +247,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         ArenaData a = arenas.get(p.getWorld().getUID());
         
         if (a != null && a.active && a.eliminated.contains(p.getUniqueId())) {
-            p.setGameMode(GameMode.ADVENTURE); // Powrót jako Adventure
+            p.setGameMode(GameMode.ADVENTURE);
             e.setRespawnLocation(a.world.getSpawnLocation());
         } else {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
@@ -239,7 +261,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player p = e.getPlayer();
         ArenaData a = arenas.get(p.getWorld().getUID());
         if (a != null && a.active && !a.eliminated.contains(p.getUniqueId())) {
-            p.setHealth(0); // Zabij gracza przy wyjściu, jeśli jeszcze żył
+            p.setHealth(0);
         }
         removeBossBar(p);
     }
@@ -247,7 +269,6 @@ public class CaveWars extends JavaPlugin implements Listener {
     private void checkWinner(ArenaData a) {
         if (!a.active) return;
         
-        // Żywi gracze to ci w trybie SURVIVAL, którzy nie zostali wyeliminowani
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
                 .collect(Collectors.toList());
@@ -330,9 +351,14 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (!(s instanceof Player p)) return false;
         if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { joinBestArena(p); return true; }
         if (p.isOp() && c.getName().equalsIgnoreCase("cwcreate")) { 
-            registeredWorlds.add(p.getWorld().getUID()); 
-            arenas.put(p.getWorld().getUID(), new ArenaData(p.getWorld())); 
-            p.sendMessage("Arena utworzona!"); 
+            if (!registeredWorlds.contains(p.getWorld().getUID())) {
+                registeredWorlds.add(p.getWorld().getUID()); 
+                arenas.put(p.getWorld().getUID(), new ArenaData(p.getWorld())); 
+                saveArenas(); // ZAPISUJE arenę do pliku od razu po stworzeniu
+                p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
+            } else {
+                p.sendMessage(ChatColor.RED + "Ta arena już istnieje!");
+            }
             return true; 
         }
         return false;

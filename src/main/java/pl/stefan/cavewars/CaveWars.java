@@ -141,7 +141,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     // --- SYSTEM LOBBY I STARTU ---
-     private void handleLobbyCountdown(ArenaData arena) {
+   private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
         if (count < 2) { arena.countdown = -1; return; }
         if (arena.countdown == -1) arena.countdown = 60;
@@ -158,7 +158,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-     private void startMatch(ArenaData arena) {
+   private void startMatch(ArenaData arena) {
         arena.active = true;
         arena.pvpGraceTime = 180;
         arena.eliminated.clear();

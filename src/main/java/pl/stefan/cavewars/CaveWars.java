@@ -341,12 +341,34 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    private void updateBossBar(Player p, ArenaData a) {
+   private void updateBossBar(Player p, ArenaData a) {
         BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
         bar.addPlayer(p);
-        double size = a.world.getWorldBorder().getSize();
-        bar.setProgress(Math.max(0, Math.min(1.0, size / 100.0)));
-        bar.setTitle(ChatColor.RED + "Granica: " + (int)size + "x" + (int)size);
+
+        WorldBorder border = a.world.getWorldBorder();
+        double size = border.getSize() / 2.0;
+        double centerX = border.getCenter().getX();
+        double centerZ = border.getCenter().getZ();
+
+        // Obliczanie dystansu do każdej z czterech krawędzi
+        double distEast = (centerX + size) - p.getLocation().getX();
+        double distWest = p.getLocation().getX() - (centerX - size);
+        double distSouth = (centerZ + size) - p.getLocation().getZ();
+        double distNorth = p.getLocation().getZ() - (centerZ - size);
+
+        // Wybieramy najmniejszy dystans (czyli odległość do najbliższej ściany)
+        double minDistance = Math.min(Math.min(distEast, distWest), Math.min(distSouth, distNorth));
+
+        // Wyświetlanie na BossBarze
+        bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int)minDistance + "m " + ChatColor.RED + "od Ciebie");
+        
+        // Pasek postępu (zmniejsza się, gdy jesteś blisko krawędzi - np. poniżej 30 kratek)
+        double progress = Math.max(0.0, Math.min(1.0, minDistance / 30.0));
+        bar.setProgress(progress);
+        
+        // Zmiana koloru na zielony, jeśli gracz jest bezpieczny (> 15 kratek od granicy)
+        if (minDistance > 15) bar.setColor(BarColor.GREEN);
+        else bar.setColor(BarColor.RED);
     }
     
     private void updateCompass(Player p, ArenaData a) {

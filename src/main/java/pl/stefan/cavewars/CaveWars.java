@@ -340,6 +340,31 @@ public class CaveWars extends JavaPlugin implements Listener {
         bar.setProgress(Math.max(0, Math.min(1.0, size / 100.0)));
         bar.setTitle(ChatColor.RED + "Granica: " + (int)size + "x" + (int)size);
     }
+    
+    private void updateCompass(Player p, ArenaData a) {
+        Player near = null; 
+        double dMin = 999.0;
+        
+        // Szukanie najbliższego gracza, który żyje i jest na arenie
+        for (Player t : a.world.getPlayers()) {
+            if (!p.equals(t) && t.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(t.getUniqueId())) {
+                double d = p.getLocation().distance(t.getLocation());
+                if (d < dMin) { 
+                    dMin = d; 
+                    near = t; 
+                }
+            }
+        }
+
+        String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
+        
+        // Dodanie informacji o metrach do ActionBaru
+        if (near != null) {
+            p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.GOLD + "Najblizszy gracz: " + ChatColor.WHITE + (int)dMin + "m");
+        } else {
+            p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.YELLOW + "Brak graczy w poblizu");
+        }
+    }
 
     private void fillChest(Chest c) {
         Inventory inv = c.getInventory();

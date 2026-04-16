@@ -44,23 +44,22 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        // Inicjalizacja konfiguracji
         saveDefaultConfig();
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
         
-        // Wczytywanie zapisanych aren
-        List<String> savedWorlds = getConfig().getStringList("arenas");
-        for (String worldName : savedWorlds) {
-            World world = Bukkit.getWorld(worldName);
-            if (world != null) {
-                registeredWorlds.add(world.getUID());
-                arenas.put(world.getUID(), new ArenaData(world));
-                getLogger().info("[CaveWars] Wczytano arene: " + worldName);
+        // Wczytywanie z zabezpieczeniem przed pustym configiem
+        if (getConfig().contains("arenas")) {
+            List<String> savedWorlds = getConfig().getStringList("arenas");
+            for (String worldName : savedWorlds) {
+                World world = Bukkit.getWorld(worldName);
+                if (world != null) {
+                    registeredWorlds.add(world.getUID());
+                    arenas.put(world.getUID(), new ArenaData(world));
+                }
             }
         }
         
-        // Główny Timer Pluginu
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
                 if (arena.active) {
@@ -74,7 +73,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 20L, 20L);
     }
 
-    // --- SYSTEM CRAFTINGU NETHERITE (BEZ TEMPLATE) ---
     private void registerCustomRecipes() {
         addNetheriteUpgrade(Material.NETHERITE_INGOT, Material.NETHERITE_SCRAP, Material.DIAMOND, "cw_n_ing");
         addNetheriteUpgrade(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
@@ -93,7 +91,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Bukkit.addRecipe(r);
     }
 
-    // --- GENERATOR ARENY ---
     private void generateSolidArena(World world) {
         int radius = 50;
         for (int x = -radius; x <= radius; x++) {
@@ -183,15 +180,12 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -5, 0);
     }
 
-    // --- DROP DO EQ ---
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
-        
         Block b = event.getBlock();
         Player p = event.getPlayer();
-        
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
@@ -199,13 +193,8 @@ public class CaveWars extends JavaPlugin implements Listener {
             event.setCancelled(true);
             return;
         }
-        
-        // Zbieranie dropów do ekwipunku
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        for (ItemStack drop : drops) {
-            p.getInventory().addItem(drop);
-        }
-        
+        for (ItemStack drop : drops) { p.getInventory().addItem(drop); }
         b.setType(Material.AIR);
         event.setDropItems(false);
     }
@@ -261,7 +250,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         a.active = false;
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
         broadcastToWorld(a.world, ChatColor.YELLOW + "Zwycięzca: " + (winner != null ? winner.getName() : "Brak"));
-        
         Bukkit.getScheduler().runTaskLater(this, () -> {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
             Location loc = (w != null) ? w.getSpawnLocation() : a.world.getSpawnLocation();
@@ -286,9 +274,8 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void updateBossBar(Player p, ArenaData a) {
         WorldBorder b = a.world.getWorldBorder();
-        double size = b.getSize() / 2;
-        double dist = Math.min(Math.min((b.getCenter().getX() + size) - p.getLocation().getX(), p.getLocation().getX() - (b.getCenter().getX() - size)), 
-                               Math.min((b.getCenter().getZ() + size) - p.getLocation().getZ(), p.getLocation().getZ() - (b.getCenter().getZ() - size)));
+        double dist = Math.min(Math.min((b.getCenter().getX() + b.getSize()/2) - p.getLocation().getX(), p.getLocation().getX() - (b.getCenter().getX() - b.getSize()/2)), 
+                               Math.min((b.getCenter().getZ() + b.getSize()/2) - p.getLocation().getZ(), p.getLocation().getZ() - (b.getCenter().getZ() - b.getSize()/2)));
         BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar("Granica", BarColor.GREEN, BarStyle.SOLID));
         bar.addPlayer(p);
         bar.setProgress(Math.max(0, Math.min(1, dist / 50.0)));
@@ -333,15 +320,22 @@ public class CaveWars extends JavaPlugin implements Listener {
                 p.sendMessage(ChatColor.RED + "Brak uprawnien!");
                 return true;
             }
+            
             UUID worldUID = p.getWorld().getUID();
             String worldName = p.getWorld().getName();
+            
+            // PANCERNY SYSTEM ZAPISU (NAPRAWIA BŁĄD ZE ZDJĘCIA)
+            List<String> savedWorlds = getConfig().getStringList("arenas");
+            if (savedWorlds == null) savedWorlds = new ArrayList<>();
+            
             if (!registeredWorlds.contains(worldUID)) {
                 registeredWorlds.add(worldUID); 
                 arenas.put(worldUID, new ArenaData(p.getWorld())); 
-                List<String> savedWorlds = getConfig().getStringList("arenas");
+                
                 savedWorlds.add(worldName);
                 getConfig().set("arenas", savedWorlds);
                 saveConfig();
+                
                 p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
             } else {
                 p.sendMessage(ChatColor.RED + "Ta arena juz istnieje!");

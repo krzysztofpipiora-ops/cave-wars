@@ -77,7 +77,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     // --- SYSTEM DROPÓW I PRZEPALANIA ---
-@EventHandler
+    @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
@@ -105,9 +105,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // ... tutaj zostaw resztę kodu (auto-przepalanie rud, skrzynie itd.) ...
-        }
-
         // Ukryta skrzynia (0.5%)
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
@@ -127,7 +124,14 @@ public class CaveWars extends JavaPlugin implements Listener {
             b.setType(Material.AIR);
             event.setDropItems(false);
             return;
-        }
+
+        if (type == Material.ANCIENT_DEBRIS) {
+        p.getInventory().addItem(new ItemStack(Material.NETHERITE_SCRAP));
+        b.setType(Material.AIR);
+        p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś i oczyściłeś starożytny gruz!"); // Opcjonalna wiadomość
+        event.setDropItems(false);
+        return;
+    }
 
         // Wszystkie inne bloki trafiają bezpośrednio do EQ
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
@@ -316,21 +320,22 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
                     
-                    if (c < 0.006) b.setType(Material.ANCIENT_DEBRIS);
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS); // Ancient Debris (ok. 0.8%)
                     else if (c < 0.04) b.setType(Material.DIAMOND_ORE);
-                    else if (c < 0.10) b.setType(Material.GOLD_ORE); // Złoto
+                    else if (c < 0.10) b.setType(Material.GOLD_ORE);
                     else if (c < 0.18) b.setType(Material.IRON_ORE);
-                    else if (c < 0.21) b.setType(Material.OBSIDIAN); // Obsydian
-                    else if (c < 0.24) b.setType(Material.GLOWSTONE); // Glowstone
-                    else if (c < 0.27) b.setType(Material.GLASS);    // Szkło
-                    else if (c < 0.30) b.setType(Material.MELON);    // Melony
+                    else if (c < 0.21) b.setType(Material.OBSIDIAN);
+                    else if (c < 0.24) b.setType(Material.GLOWSTONE);
+                    else if (c < 0.27) b.setType(Material.GLASS);
+                    else if (c < 0.30) b.setType(Material.MELON);
                     else if (c < 0.45) b.setType(Material.OAK_LOG);
-                    else if (c < 0.55) b.setType(Material.OAK_LEAVES); // Liście
+                    else if (c < 0.55) b.setType(Material.OAK_LEAVES);
                     else b.setType(Material.STONE);
                 }
             }
         }
     }
+    
     private void loadArenas() {
         List<String> names = getConfig().getStringList("arenas");
         for (String name : names) {

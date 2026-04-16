@@ -177,32 +177,34 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -5, 0);
     }
 
-    @EventHandler
+ @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
+        
         Block b = event.getBlock();
+        Player p = event.getPlayer();
         
         // 0.5% szansy na skrzynkę zamiast bloku
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
-            event.getPlayer().sendMessage(ChatColor.GOLD + "Znalazłeś ukrytą skrzynię!");
+            p.sendMessage(ChatColor.GOLD + "Znalazłeś ukrytą skrzynię!");
             event.setCancelled(true);
             return;
         }
         
-        Material t = b.getType();
-        ItemStack d = null;
-        if (t == Material.IRON_ORE || t == Material.DEEPSLATE_IRON_ORE) d = new ItemStack(Material.IRON_INGOT);
-        else if (t == Material.GOLD_ORE || t == Material.DEEPSLATE_GOLD_ORE) d = new ItemStack(Material.GOLD_INGOT);
-        else if (t == Material.ANCIENT_DEBRIS) d = new ItemStack(Material.NETHERITE_SCRAP);
+        // Pobieramy dropy, które normalnie wypadłyby z bloku (z uwzględnieniem kilofa gracza)
+        Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         
-        if (d != null) { 
-            event.getPlayer().getInventory().addItem(d); 
-            b.setType(Material.AIR); 
-            event.setDropItems(false); 
+        // Dodajemy każdy przedmiot bezpośrednio do ekwipunku
+        for (ItemStack drop : drops) {
+            p.getInventory().addItem(drop);
         }
+        
+        // Usuwamy blok i blokujemy naturalny drop przedmiotów na ziemię
+        b.setType(Material.AIR);
+        event.setDropItems(false);
     }
 
     private void fillChest(Chest c) {

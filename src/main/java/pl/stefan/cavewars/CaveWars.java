@@ -12,10 +12,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
-import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
@@ -49,9 +48,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onEnable() {
         try {
             if (!getDataFolder().exists()) getDataFolder().mkdirs();
-            try {
-                saveDefaultConfig();
-            } catch (Exception ignored) {}
+            try { saveDefaultConfig(); } catch (Exception ignored) {}
 
             Bukkit.getPluginManager().registerEvents(this, this);
             registerCustomRecipes();
@@ -91,7 +88,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player p = event.getPlayer();
         Material type = b.getType();
 
-        // 20% szans na jabłko z liści
         if (type == Material.OAK_LEAVES) {
             if (random.nextDouble() < 0.20) {
                 p.getInventory().addItem(new ItemStack(Material.APPLE));
@@ -101,7 +97,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Obsługa melonów
         if (type == Material.MELON) {
             int ilosc = random.nextInt(5) + 3;
             p.getInventory().addItem(new ItemStack(Material.MELON_SLICE, ilosc));
@@ -110,7 +105,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Ukryta skrzynia (0.5%)
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
@@ -133,7 +127,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Ancient Debris
         if (type == Material.ANCIENT_DEBRIS) {
             p.getInventory().addItem(new ItemStack(Material.NETHERITE_SCRAP));
             b.setType(Material.AIR);
@@ -178,7 +171,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
-        // Ustawienie początkowego rozmiaru na 100x100
         arena.world.getWorldBorder().setCenter(0, 0);
         arena.world.getWorldBorder().setSize(100);
         arena.world.getWorldBorder().setSize(10, 600);
@@ -189,7 +181,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
 
-            // Wyczyszczenie miejsca na glowe
             for (int x = -1; x <= 1; x++)
                 for (int y = 0; y <= 2; y++)
                     for (int z = -1; z <= 1; z++)
@@ -203,7 +194,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.sendMessage(ChatColor.GREEN + "POWODZENIA! Masz 3 minuty ochrony pvp.");
         }
 
-        // Dodatkowe zmniejszenie bordera po 10 minutach
         Bukkit.getScheduler().runTaskLater(this, () -> {
             if (arena.active) {
                 arena.world.getWorldBorder().setSize(6, 600);
@@ -216,12 +206,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         for (int i = 0; i < 250; i++) {
             Location loc = new Location(arena.world, random.nextInt(70) - 35, -10, random.nextInt(70) - 35);
             boolean far = true;
-            for (Location o : arena.spawnPoints) {
+            for (Location o : arena.spawnPoints)
                 if (loc.distance(o) < 15) {
                     far = false;
                     break;
                 }
-            }
             if (far) return loc;
         }
         return new Location(arena.world, 0, -10, 0);
@@ -232,9 +221,8 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
                 .collect(Collectors.toList());
-        if (alive.size() <= 1) {
+        if (alive.size() <= 1)
             endGame(a, alive.isEmpty() ? null : alive.get(0));
-        }
     }
 
     private void endGame(ArenaData a, Player winner) {
@@ -271,6 +259,21 @@ public class CaveWars extends JavaPlugin implements Listener {
             v.setGameMode(GameMode.SPECTATOR);
             checkWinner(a);
         }, 1L);
+    }
+
+    // NOWE: Usuwanie bossbara gdy gracz opuszcza arenę
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent e) {
+        removeBossBar(e.getPlayer());
+    }
+
+    @EventHandler
+    public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
+        // Jeśli gracz wyszedł z świata areny – usuń bossbar
+        ArenaData arena = arenas.get(e.getFrom().getUID());
+        if (arena != null) {
+            removeBossBar(e.getPlayer());
+        }
     }
 
     // --- RECEPTURY ---
@@ -330,28 +333,29 @@ public class CaveWars extends JavaPlugin implements Listener {
         return false;
     }
 
-    // --- GENEROWANIE I INNE ---
+    // --- GENEROWANIE ARENY ---
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {
             for (int z = -r; z <= r; z++) {
                 world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
                 world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
+
                 for (int y = -30; y < 20; y++) {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
 
-                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);
-                    else if (c < 0.04) b.setType(Material.DIAMOND_ORE);
-                    else if (c < 0.10) b.setType(Material.GOLD_ORE);
-                    else if (c < 0.18) b.setType(Material.IRON_ORE);
-                    else if (c < 0.21) b.setType(Material.OBSIDIAN);
-                    else if (c < 0.24) b.setType(Material.GLOWSTONE);
-                    else if (c < 0.27) b.setType(Material.GLASS);
-                    else if (c < 0.30) b.setType(Material.MELON);
-                    else if (c < 0.45) b.setType(Material.OAK_LOG);
-                    else if (c < 0.55) b.setType(Material.OAK_LEAVES);
-                    else b.setType(Material.STONE);
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);        // ~0.8%
+                    else if (c < 0.04) b.setType(Material.DIAMOND_ORE);       // ~3.2%
+                    else if (c < 0.10) b.setType(Material.GOLD_ORE);          // ~6%
+                    else if (c < 0.18) b.setType(Material.IRON_ORE);          // ~8%
+                    else if (c < 0.21) b.setType(Material.OBSIDIAN);          // ~3%
+                    else if (c < 0.24) b.setType(Material.GLOWSTONE);         // ~3%
+                    else if (c < 0.27) b.setType(Material.GLASS);             // ~3%
+                    else if (c < 0.30) b.setType(Material.MELON);             // ~3%
+                    else if (c < 0.45) b.setType(Material.OAK_LOG);           // ~15%
+                    else if (c < 0.55) b.setType(Material.OAK_LEAVES);        // ~10%
+                    else b.setType(Material.STONE);                           // ~30%  ← ZMNIEJSZONE
                 }
             }
         }
@@ -382,8 +386,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         for (Player p : a.world.getPlayers()) {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
                 updateBossBar(p, a);
-                String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
-                p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.WHITE + "Zywi gracze: " + (a.world.getPlayers().size() - a.eliminated.size()));
+                String pvp = a.pvpGraceTime > 0 
+                    ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " 
+                    : ChatColor.RED + "PvP: ON ";
+                p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.WHITE 
+                    + "Zywi gracze: " + (a.world.getPlayers().size() - a.eliminated.size()));
             } else {
                 removeBossBar(p);
             }
@@ -391,15 +398,17 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void updateBossBar(Player p, ArenaData a) {
-        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
+        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(),
+                k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
+
         bar.addPlayer(p);
         WorldBorder border = a.world.getWorldBorder();
         double size = border.getSize() / 2.0;
         double centerX = border.getCenter().getX();
         double centerZ = border.getCenter().getZ();
 
-        double distEast = (centerX + size) - p.getLocation().getX();
-        double distWest = p.getLocation().getX() - (centerX - size);
+        double distEast  = (centerX + size) - p.getLocation().getX();
+        double distWest  = p.getLocation().getX() - (centerX - size);
         double distSouth = (centerZ + size) - p.getLocation().getZ();
         double distNorth = p.getLocation().getZ() - (centerZ - size);
 
@@ -409,13 +418,13 @@ public class CaveWars extends JavaPlugin implements Listener {
         double progress = Math.max(0.0, Math.min(1.0, minDistance / 30.0));
         bar.setProgress(progress);
 
-        if (minDistance > 15) bar.setColor(BarColor.GREEN);
-        else bar.setColor(BarColor.RED);
+        bar.setColor(minDistance > 15 ? BarColor.GREEN : BarColor.RED);
     }
 
     private void fillChest(Chest c) {
         Inventory inv = c.getInventory();
-        Material[] loot = {Material.IRON_SWORD, Material.GOLDEN_APPLE, Material.DIAMOND, Material.BOW, Material.ARROW, Material.TNT, Material.ENCHANTED_BOOK};
+        Material[] loot = {Material.IRON_SWORD, Material.GOLDEN_APPLE, Material.DIAMOND, Material.BOW,
+                           Material.ARROW, Material.TNT, Material.ENCHANTED_BOOK};
         for (int i = 0; i < 4; i++) {
             inv.setItem(random.nextInt(inv.getSize()), new ItemStack(loot[random.nextInt(loot.length)], 1));
         }

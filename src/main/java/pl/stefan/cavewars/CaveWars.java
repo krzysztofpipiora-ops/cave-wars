@@ -113,7 +113,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             fillChest((Chest) b.getState());
             p.sendMessage(ChatColor.GOLD + "Znalazles ukryta skrzynie w skale!");
             
-            // Dźwięk znalezienia skrzyni
             p.playSound(p.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.2f);
             p.playSound(p.getLocation(), Sound.BLOCK_CHEST_OPEN, 0.8f, 1.0f);
             
@@ -224,7 +223,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -10, 0);
     }
 
-    // --- WINNER & ELIMINATION ---
+    // --- WINNER & ELIMINATION + FAJERWERKI ---
     private void checkWinner(ArenaData a) {
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
@@ -241,7 +240,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
         broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
 
-        // Wystrzelenie fajerwerków
         launchFireworks(a, winner);
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -257,18 +255,14 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 160L);
     }
 
-    // Nowa metoda - fajerwerki po zakończeniu gry
     private void launchFireworks(ArenaData arena, Player winner) {
-        Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
-
         if (winner != null) {
-            // Fajerwerki nad zwycięzcą
             Location winnerLoc = winner.getLocation().clone().add(0, 8, 0);
             for (int i = 0; i < 5; i++) {
                 Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(winnerLoc), i * 8L);
             }
         } else {
-            // Remis - fajerwerki w centrum areny
+            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
             for (int i = 0; i < 8; i++) {
                 Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
             }
@@ -279,7 +273,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         Firework fw = loc.getWorld().spawn(loc, Firework.class);
         FireworkMeta meta = fw.getFireworkMeta();
         meta.addEffect(FireworkEffect.builder()
-                .withColor(Color.RED, Color.YELLOW, Color.ORANGE)
+                .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
                 .with(FireworkEffect.Type.BURST)
                 .trail(true)
                 .flicker(true)
@@ -342,39 +336,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         } catch (Exception ignored) {}
     }
 
-    // --- KOMENDY ---
-    @Override
-    public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
-        if (!(s instanceof Player p)) return false;
-
-        if (c.getName().equalsIgnoreCase("cwcreate")) {
-            if (!p.isOp()) return true;
-            UUID id = p.getWorld().getUID();
-            if (!registeredWorlds.contains(id)) {
-                registeredWorlds.add(id);
-                arenas.put(id, new ArenaData(p.getWorld()));
-                saveArenas();
-                p.sendMessage(ChatColor.GREEN + "Swiat zostal zapisany jako arena CaveWars!");
-            }
-            return true;
-        }
-
-        if (c.getName().equalsIgnoreCase("cw")) {
-            for (ArenaData a : arenas.values()) {
-                if (!a.active && a.world.getPlayers().size() < 12) {
-                    p.teleport(a.world.getSpawnLocation());
-                    p.setGameMode(GameMode.ADVENTURE);
-                    p.sendMessage(ChatColor.YELLOW + "Dolaczyles do areny!");
-                    return true;
-                }
-            }
-            p.sendMessage(ChatColor.RED + "Brak wolnych aren!");
-            return true;
-        }
-        return false;
-    }
-
-    // --- GENEROWANIE ARENY (STONE 25%) ---
+    // --- GENEROWANIE ARENY ---
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {
@@ -386,17 +348,18 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
 
-                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);        // 0.8%
-                    else if (c < 0.04) b.setType(Material.DIAMOND_ORE);       // 3.2%
-                    else if (c < 0.10) b.setType(Material.GOLD_ORE);          // 6.0%
-                    else if (c < 0.18) b.setType(Material.IRON_ORE);          // 8.0%
-                    else if (c < 0.21) b.setType(Material.OBSIDIAN);          // 3.0%
-                    else if (c < 0.24) b.setType(Material.GLOWSTONE);         // 3.0%
-                    else if (c < 0.27) b.setType(Material.GLASS);             // 3.0%
-                    else if (c < 0.30) b.setType(Material.MELON);             // 3.0%
-                    else if (c < 0.45) b.setType(Material.OAK_LOG);           // 15.0%
-                    else if (c < 0.55) b.setType(Material.OAK_LEAVES);        // 10.0%
-                    else b.setType(Material.STONE);                           // 25%
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);     // 0.8%
+                    else if (c < 0.016) b.setType(Material.BOOKSHELF);     // 0.8%  ← NOWO DODANE
+                    else if (c < 0.048) b.setType(Material.DIAMOND_ORE);   // 3.2%
+                    else if (c < 0.108) b.setType(Material.GOLD_ORE);      // 6.0%
+                    else if (c < 0.188) b.setType(Material.IRON_ORE);      // 8.0%
+                    else if (c < 0.218) b.setType(Material.OBSIDIAN);      // 3.0%
+                    else if (c < 0.248) b.setType(Material.GLOWSTONE);     // 3.0%
+                    else if (c < 0.278) b.setType(Material.GLASS);         // 3.0%
+                    else if (c < 0.308) b.setType(Material.MELON);         // 3.0%
+                    else if (c < 0.458) b.setType(Material.OAK_LOG);       // 15.0%
+                    else if (c < 0.558) b.setType(Material.OAK_LEAVES);    // 10.0%
+                    else b.setType(Material.STONE);                        // 25%
                 }
             }
         }

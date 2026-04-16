@@ -36,30 +36,35 @@ public class CaveWars extends JavaPlugin implements Listener {
         World world;
         boolean active = false;
         int countdown = -1;
-        int pvpGraceTime = 0; 
+        int pvpGraceTime = 0;
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
-        ArenaData(World world) { this.world = world; }
+
+        ArenaData(World world) {
+            this.world = world;
+        }
     }
 
     @Override
     public void onEnable() {
         try {
             if (!getDataFolder().exists()) getDataFolder().mkdirs();
-            // Próba załadowania domyślnego configu
-            try { saveDefaultConfig(); } catch (Exception ignored) {}
-            
+            try {
+                saveDefaultConfig();
+            } catch (Exception ignored) {}
+
             Bukkit.getPluginManager().registerEvents(this, this);
             registerCustomRecipes();
 
-            // Wczytanie aren po pełnym starcie serwera
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 loadArenas();
                 getLogger().info("System aren CaveWars zostal zainicjalizowany.");
             }, 40L);
 
             startMainTask();
-        } catch (Exception e) { e.printStackTrace(); }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void startMainTask() {
@@ -96,9 +101,9 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Obsługa melonów (aby wypadały plasterki do EQ)
+        // Obsługa melonów
         if (type == Material.MELON) {
-            int ilosc = random.nextInt(5) + 3; // 3-7 plasterków
+            int ilosc = random.nextInt(5) + 3;
             p.getInventory().addItem(new ItemStack(Material.MELON_SLICE, ilosc));
             b.setType(Material.AIR);
             event.setCancelled(true);
@@ -116,35 +121,43 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         // Automatyczne przepalanie rud
         ItemStack drop = null;
-        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) drop = new ItemStack(Material.IRON_INGOT);
-        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) drop = new ItemStack(Material.GOLD_INGOT);
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE)
+            drop = new ItemStack(Material.IRON_INGOT);
+        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE)
+            drop = new ItemStack(Material.GOLD_INGOT);
 
         if (drop != null) {
             p.getInventory().addItem(drop);
             b.setType(Material.AIR);
             event.setDropItems(false);
             return;
+        }
 
+        // Ancient Debris
         if (type == Material.ANCIENT_DEBRIS) {
-        p.getInventory().addItem(new ItemStack(Material.NETHERITE_SCRAP));
-        b.setType(Material.AIR);
-        p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś i oczyściłeś starożytny gruz!"); // Opcjonalna wiadomość
-        event.setDropItems(false);
-        return;
-    }
+            p.getInventory().addItem(new ItemStack(Material.NETHERITE_SCRAP));
+            b.setType(Material.AIR);
+            p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś i oczyściłeś starożytny gruz!");
+            event.setDropItems(false);
+            return;
+        }
 
         // Wszystkie inne bloki trafiają bezpośrednio do EQ
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        for (ItemStack item : drops) p.getInventory().addItem(item);
+        for (ItemStack item : drops) {
+            p.getInventory().addItem(item);
+        }
         b.setType(Material.AIR);
         event.setDropItems(false);
-    } 
-
+    }
 
     // --- SYSTEM LOBBY I STARTU ---
     private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
-        if (count < 2) { arena.countdown = -1; return; }
+        if (count < 2) {
+            arena.countdown = -1;
+            return;
+        }
         if (arena.countdown == -1) arena.countdown = 60;
         if (count >= 8 && arena.countdown > 15) arena.countdown = 15;
 
@@ -159,29 +172,29 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-   private void startMatch(ArenaData arena) {
+    private void startMatch(ArenaData arena) {
         arena.active = true;
         arena.pvpGraceTime = 180;
         arena.eliminated.clear();
         arena.spawnPoints.clear();
-    
-   // Ustawienie początkowego rozmiaru na 100x100
-    arena.world.getWorldBorder().setCenter(0, 0);
-    arena.world.getWorldBorder().setSize(100);
 
-    // Border zacznie się kurczyć do 10x10 w czasie 600 sekund (10 minut)
-    // Jeśli chcesz, aby działo się to szybciej, zmień 600 na mniejszą liczbę.
-    arena.world.getWorldBorder().setSize(10, 600); 
-    
-    broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10!");
-    
+        // Ustawienie początkowego rozmiaru na 100x100
+        arena.world.getWorldBorder().setCenter(0, 0);
+        arena.world.getWorldBorder().setSize(100);
+        arena.world.getWorldBorder().setSize(10, 600);
+
+        broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10!");
+
         for (Player p : arena.world.getPlayers()) {
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
+
             // Wyczyszczenie miejsca na glowe
-            for(int x=-1; x<=1; x++) for(int y=0; y<=2; y++) for(int z=-1; z<=1; z++)
-                loc.clone().add(x,y,z).getBlock().setType(Material.AIR);
-                
+            for (int x = -1; x <= 1; x++)
+                for (int y = 0; y <= 2; y++)
+                    for (int z = -1; z <= 1; z++)
+                        loc.clone().add(x, y, z).getBlock().setType(Material.AIR);
+
             p.teleport(loc.add(0.5, 0.1, 0.5));
             p.setGameMode(GameMode.SURVIVAL);
             p.getInventory().clear();
@@ -189,8 +202,8 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
             p.sendMessage(ChatColor.GREEN + "POWODZENIA! Masz 3 minuty ochrony pvp.");
         }
-        
-        // Border rusza po 10 minutach (600s) - mozesz zmienic 12000L na inna wartosc (20 tickow = 1s)
+
+        // Dodatkowe zmniejszenie bordera po 10 minutach
         Bukkit.getScheduler().runTaskLater(this, () -> {
             if (arena.active) {
                 arena.world.getWorldBorder().setSize(6, 600);
@@ -201,9 +214,14 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private Location findSafeSpawn(ArenaData arena) {
         for (int i = 0; i < 250; i++) {
-            Location loc = new Location(arena.world, random.nextInt(70)-35, -10, random.nextInt(70)-35);
+            Location loc = new Location(arena.world, random.nextInt(70) - 35, -10, random.nextInt(70) - 35);
             boolean far = true;
-            for (Location o : arena.spawnPoints) if (loc.distance(o) < 15) { far = false; break; }
+            for (Location o : arena.spawnPoints) {
+                if (loc.distance(o) < 15) {
+                    far = false;
+                    break;
+                }
+            }
             if (far) return loc;
         }
         return new Location(arena.world, 0, -10, 0);
@@ -214,7 +232,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
                 .collect(Collectors.toList());
-        if (alive.size() <= 1) endGame(a, alive.isEmpty() ? null : alive.get(0));
+        if (alive.size() <= 1) {
+            endGame(a, alive.isEmpty() ? null : alive.get(0));
+        }
     }
 
     private void endGame(ArenaData a, Player winner) {
@@ -223,7 +243,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         String name = (winner != null) ? winner.getName() : "Remis";
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
         broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
-        
+
         Bukkit.getScheduler().runTaskLater(this, () -> {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
             for (Player p : a.world.getPlayers()) {
@@ -242,26 +262,24 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player v = e.getEntity();
         ArenaData a = arenas.get(v.getWorld().getUID());
         if (a == null || !a.active) return;
-        
+
         a.eliminated.add(v.getUniqueId());
         e.getDrops().clear();
         v.sendMessage(ChatColor.RED + "Zostales wyeliminowany!");
+
         Bukkit.getScheduler().runTaskLater(this, () -> {
             v.setGameMode(GameMode.SPECTATOR);
             checkWinner(a);
         }, 1L);
     }
 
-    // --- RECEPTURY (PELNA LISTA) ---
+    // --- RECEPTURY ---
     private void registerCustomRecipes() {
-        // Sztabka netherytu: Sztabka zlota + Odłamek (dla ulatwienia w CaveWars)
         addRecipe(Material.NETHERITE_INGOT, Material.NETHERITE_SCRAP, Material.GOLD_INGOT, "cw_n_ing");
-        // Narzedzia
         addRecipe(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
         addRecipe(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
         addRecipe(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");
         addRecipe(Material.NETHERITE_SHOVEL, Material.DIAMOND_SHOVEL, Material.NETHERITE_INGOT, "cw_n_sh");
-        // Zbroje
         addRecipe(Material.NETHERITE_HELMET, Material.DIAMOND_HELMET, Material.NETHERITE_INGOT, "cw_n_he");
         addRecipe(Material.NETHERITE_CHESTPLATE, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_INGOT, "cw_n_ch");
         addRecipe(Material.NETHERITE_LEGGINGS, Material.DIAMOND_LEGGINGS, Material.NETHERITE_INGOT, "cw_n_le");
@@ -273,7 +291,9 @@ public class CaveWars extends JavaPlugin implements Listener {
             NamespacedKey key = new NamespacedKey(this, k);
             if (Bukkit.getRecipe(key) != null) Bukkit.removeRecipe(key);
             ShapedRecipe r = new ShapedRecipe(key, new ItemStack(res));
-            r.shape("AB"); r.setIngredient('A', i1); r.setIngredient('B', i2);
+            r.shape("AB");
+            r.setIngredient('A', i1);
+            r.setIngredient('B', i2);
             Bukkit.addRecipe(r);
         } catch (Exception ignored) {}
     }
@@ -282,7 +302,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) return false;
-        
+
         if (c.getName().equalsIgnoreCase("cwcreate")) {
             if (!p.isOp()) return true;
             UUID id = p.getWorld().getUID();
@@ -320,8 +340,8 @@ public class CaveWars extends JavaPlugin implements Listener {
                 for (int y = -30; y < 20; y++) {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
-                    
-                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS); // Ancient Debris (ok. 0.8%)
+
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);
                     else if (c < 0.04) b.setType(Material.DIAMOND_ORE);
                     else if (c < 0.10) b.setType(Material.GOLD_ORE);
                     else if (c < 0.18) b.setType(Material.IRON_ORE);
@@ -336,7 +356,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             }
         }
     }
-    
+
     private void loadArenas() {
         List<String> names = getConfig().getStringList("arenas");
         for (String name : names) {
@@ -350,8 +370,10 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void saveArenas() {
         List<String> names = registeredWorlds.stream()
-                .map(u -> Bukkit.getWorld(u)).filter(Objects::nonNull)
-                .map(World::getName).collect(Collectors.toList());
+                .map(u -> Bukkit.getWorld(u))
+                .filter(Objects::nonNull)
+                .map(World::getName)
+                .collect(Collectors.toList());
         getConfig().set("arenas", names);
         saveConfig();
     }
@@ -362,71 +384,49 @@ public class CaveWars extends JavaPlugin implements Listener {
                 updateBossBar(p, a);
                 String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
                 p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.WHITE + "Zywi gracze: " + (a.world.getPlayers().size() - a.eliminated.size()));
-            } else removeBossBar(p);
+            } else {
+                removeBossBar(p);
+            }
         }
     }
 
-   private void updateBossBar(Player p, ArenaData a) {
+    private void updateBossBar(Player p, ArenaData a) {
         BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
         bar.addPlayer(p);
-
         WorldBorder border = a.world.getWorldBorder();
         double size = border.getSize() / 2.0;
         double centerX = border.getCenter().getX();
         double centerZ = border.getCenter().getZ();
 
-        // Obliczanie dystansu do każdej z czterech krawędzi
         double distEast = (centerX + size) - p.getLocation().getX();
         double distWest = p.getLocation().getX() - (centerX - size);
         double distSouth = (centerZ + size) - p.getLocation().getZ();
         double distNorth = p.getLocation().getZ() - (centerZ - size);
 
-        // Wybieramy najmniejszy dystans (czyli odległość do najbliższej ściany)
         double minDistance = Math.min(Math.min(distEast, distWest), Math.min(distSouth, distNorth));
 
-        // Wyświetlanie na BossBarze
-        bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int)minDistance + "m " + ChatColor.RED + "od Ciebie");
-        
-        // Pasek postępu (zmniejsza się, gdy jesteś blisko krawędzi - np. poniżej 30 kratek)
+        bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int) minDistance + "m " + ChatColor.RED + "od Ciebie");
         double progress = Math.max(0.0, Math.min(1.0, minDistance / 30.0));
         bar.setProgress(progress);
-        
-        // Zmiana koloru na zielony, jeśli gracz jest bezpieczny (> 15 kratek od granicy)
+
         if (minDistance > 15) bar.setColor(BarColor.GREEN);
         else bar.setColor(BarColor.RED);
-    }
-    
-    private void updateCompass(Player p, ArenaData a) {
-        Player near = null; 
-        double dMin = 999.0;
-        
-        // Szukanie najbliższego gracza, który żyje i jest na arenie
-        for (Player t : a.world.getPlayers()) {
-            if (!p.equals(t) && t.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(t.getUniqueId())) {
-                double d = p.getLocation().distance(t.getLocation());
-                if (d < dMin) { 
-                    dMin = d; 
-                    near = t; 
-                }
-            }
-        }
-
-        String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
-        
-        // Dodanie informacji o metrach do ActionBaru
-        if (near != null) {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.GOLD + "Najblizszy gracz: " + ChatColor.WHITE + (int)dMin + "m");
-        } else {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + "| " + ChatColor.YELLOW + "Brak graczy w poblizu");
-        }
     }
 
     private void fillChest(Chest c) {
         Inventory inv = c.getInventory();
         Material[] loot = {Material.IRON_SWORD, Material.GOLDEN_APPLE, Material.DIAMOND, Material.BOW, Material.ARROW, Material.TNT, Material.ENCHANTED_BOOK};
-        for (int i = 0; i < 4; i++) inv.setItem(random.nextInt(inv.getSize()), new ItemStack(loot[random.nextInt(loot.length)], 1));
+        for (int i = 0; i < 4; i++) {
+            inv.setItem(random.nextInt(inv.getSize()), new ItemStack(loot[random.nextInt(loot.length)], 1));
+        }
     }
 
-    private void broadcastToWorld(World w, String m) { for (Player p : w.getPlayers()) p.sendMessage(m); }
-    private void removeBossBar(Player p) { BossBar b = playerBossBars.remove(p.getUniqueId()); if (b != null) b.removeAll(); }
+    private void broadcastToWorld(World w, String m) {
+        for (Player p : w.getPlayers()) p.sendMessage(m);
+    }
+
+    private void removeBossBar(Player p) {
+        BossBar b = playerBossBars.remove(p.getUniqueId());
+        if (b != null) b.removeAll();
+    }
 }

@@ -77,7 +77,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     // --- SYSTEM DROPÓW I PRZEPALANIA ---
-    @EventHandler
+@EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
@@ -86,12 +86,26 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player p = event.getPlayer();
         Material type = b.getType();
 
-        // 20% szans na jabłko z liści dębu
+        // 20% szans na jabłko z liści
         if (type == Material.OAK_LEAVES) {
-            if (random.nextDouble() < 0.20) p.getInventory().addItem(new ItemStack(Material.APPLE));
+            if (random.nextDouble() < 0.20) {
+                p.getInventory().addItem(new ItemStack(Material.APPLE));
+            }
             b.setType(Material.AIR);
             event.setCancelled(true);
             return;
+        }
+
+        // Obsługa melonów (aby wypadały plasterki do EQ)
+        if (type == Material.MELON) {
+            int ilosc = random.nextInt(5) + 3; // 3-7 plasterków
+            p.getInventory().addItem(new ItemStack(Material.MELON_SLICE, ilosc));
+            b.setType(Material.AIR);
+            event.setCancelled(true);
+            return;
+        }
+
+        // ... tutaj zostaw resztę kodu (auto-przepalanie rud, skrzynie itd.) ...
         }
 
         // Ukryta skrzynia (0.5%)
@@ -301,17 +315,22 @@ public class CaveWars extends JavaPlugin implements Listener {
                 for (int y = -30; y < 20; y++) {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
-                    if (c < 0.007) b.setType(Material.ANCIENT_DEBRIS);
-                    else if (c < 0.06) b.setType(Material.DIAMOND_ORE);
-                    else if (c < 0.22) b.setType(Material.IRON_ORE);
-                    else if (c < 0.40) b.setType(Material.OAK_LOG);
-                    else if (c < 0.50) b.setType(Material.OAK_LEAVES);
+                    
+                    if (c < 0.006) b.setType(Material.ANCIENT_DEBRIS);
+                    else if (c < 0.04) b.setType(Material.DIAMOND_ORE);
+                    else if (c < 0.10) b.setType(Material.GOLD_ORE); // Złoto
+                    else if (c < 0.18) b.setType(Material.IRON_ORE);
+                    else if (c < 0.21) b.setType(Material.OBSIDIAN); // Obsydian
+                    else if (c < 0.24) b.setType(Material.GLOWSTONE); // Glowstone
+                    else if (c < 0.27) b.setType(Material.GLASS);    // Szkło
+                    else if (c < 0.30) b.setType(Material.MELON);    // Melony
+                    else if (c < 0.45) b.setType(Material.OAK_LOG);
+                    else if (c < 0.55) b.setType(Material.OAK_LEAVES); // Liście
                     else b.setType(Material.STONE);
                 }
             }
         }
     }
-
     private void loadArenas() {
         List<String> names = getConfig().getStringList("arenas");
         for (String name : names) {

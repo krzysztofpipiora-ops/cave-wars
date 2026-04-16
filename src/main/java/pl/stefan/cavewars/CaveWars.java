@@ -44,12 +44,20 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        saveDefaultConfig(); // Tworzy plik config.yml jeśli nie istnieje
-        loadArenas();        // Wczytuje areny z pliku
-
+        // Inicjalizacja konfiguracji
+        if (!getDataFolder().exists()) {
+            getDataFolder().mkdirs();
+        }
+        saveDefaultConfig();
+        
+        // Rejestracja zdarzeń i receptur
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
+
+        // Wczytanie zapisanych aren
+        loadArenas();
         
+        // Główna pętla gry (1 sekunda)
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
                 if (arena.active) {
@@ -63,20 +71,24 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 20L, 20L);
     }
 
-    // Nowa metoda wczytująca areny po starcie
     private void loadArenas() {
         List<String> worldNames = getConfig().getStringList("arenas");
+        if (worldNames == null || worldNames.isEmpty()) return;
+
         for (String name : worldNames) {
             World world = Bukkit.getWorld(name);
             if (world != null) {
-                registeredWorlds.add(world.getUID());
-                arenas.put(world.getUID(), new ArenaData(world));
-                getLogger().info("Wczytano arenę: " + name);
+                if (!registeredWorlds.contains(world.getUID())) {
+                    registeredWorlds.add(world.getUID());
+                    arenas.put(world.getUID(), new ArenaData(world));
+                    getLogger().info("Wczytano zapisana arene: " + name);
+                }
+            } else {
+                getLogger().warning("Nie udalo sie wczytac swiata areny: " + name);
             }
         }
     }
 
-    // Nowa metoda zapisująca areny
     private void saveArenas() {
         List<String> worldNames = new ArrayList<>();
         for (UUID uuid : registeredWorlds) {
@@ -181,7 +193,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         Bukkit.getScheduler().runTaskLater(this, () -> {
             if (arena.active) {
                 arena.world.getWorldBorder().setSize(6, 900);
-                broadcastToWorld(arena.world, ChatColor.RED + "Border ruszył!");
+                broadcastToWorld(arena.world, ChatColor.RED + "Border ruszyl!");
             }
         }, 3600L);
     }
@@ -207,7 +219,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
-            p.sendMessage(ChatColor.GOLD + "Znalazłeś ukrytą skrzynię!");
+            p.sendMessage(ChatColor.GOLD + "Znalazles ukryta skrzynie!");
             event.setCancelled(true);
             return;
         }
@@ -234,7 +246,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         ArenaData a = arenas.get(v.getWorld().getUID());
         if (a == null || !a.active) return;
         
-        a.eliminated.add(v.getUniqueId());
+        a.eliminated.add(v.getUniqueId()); 
         e.getDrops().clear(); 
         v.getInventory().clear();
         
@@ -284,7 +296,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         
         String name = (winner != null) ? winner.getName() : "Brak";
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
-        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwycięzca: " + ChatColor.WHITE + name);
+        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
         
         Bukkit.getScheduler().runTaskLater(this, () -> {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
@@ -331,11 +343,15 @@ public class CaveWars extends JavaPlugin implements Listener {
             }
         }
         String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
-        if (near != null) p.sendActionBar(pvp + ChatColor.GOLD + "| Najbliższy: " + near.getName() + " (" + (int)dMin + "m)");
+        if (near != null) p.sendActionBar(pvp + ChatColor.GOLD + "| Najblizszy: " + near.getName() + " (" + (int)dMin + "m)");
         else p.sendActionBar(pvp);
     }
 
     private void joinBestArena(Player p) {
+        if (registeredWorlds.isEmpty()) {
+            p.sendMessage(ChatColor.RED + "Brak dostepnych aren. Uzyj /cwcreate.");
+            return;
+        }
         for (UUID id : registeredWorlds) {
             ArenaData a = arenas.get(id);
             if (a != null && !a.active && a.world.getPlayers().size() < 8) {
@@ -344,20 +360,38 @@ public class CaveWars extends JavaPlugin implements Listener {
                 return;
             }
         }
+        p.sendMessage(ChatColor.RED + "Wszystkie areny sa pelne!");
     }
 
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) return false;
-        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { joinBestArena(p); return true; }
-        if (p.isOp() && c.getName().equalsIgnoreCase("cwcreate")) { 
-            if (!registeredWorlds.contains(p.getWorld().getUID())) {
-                registeredWorlds.add(p.getWorld().getUID()); 
-                arenas.put(p.getWorld().getUID(), new ArenaData(p.getWorld())); 
-                saveArenas(); // ZAPISUJE arenę do pliku od razu po stworzeniu
-                p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
+        
+        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { 
+            joinBestArena(p); 
+            return true; 
+        }
+        
+        if (c.getName().equalsIgnoreCase("cwcreate")) {
+            if (!p.isOp()) {
+                p.sendMessage(ChatColor.RED + "Brak uprawnien!");
+                return true;
+            }
+            
+            UUID worldUUID = p.getWorld().getUID();
+            if (!registeredWorlds.contains(worldUUID)) {
+                registeredWorlds.add(worldUUID); 
+                arenas.put(worldUUID, new ArenaData(p.getWorld())); 
+                
+                try {
+                    saveArenas(); 
+                    p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
+                } catch (Exception e) {
+                    p.sendMessage(ChatColor.RED + "Blad podczas zapisu! Sprawdz konsole.");
+                    e.printStackTrace();
+                }
             } else {
-                p.sendMessage(ChatColor.RED + "Ta arena już istnieje!");
+                p.sendMessage(ChatColor.YELLOW + "Ta arena juz istnieje.");
             }
             return true; 
         }

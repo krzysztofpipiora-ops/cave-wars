@@ -1,12 +1,12 @@
 name: CaveWars
 version: 1.0
 main: pl.stefan.cavewars.CaveWars
-api-version: 1.20
+api-version: 1.20 # Lub wersja, której używasz
 commands:
-  cwcreate:
-    description: Rejestruje świat jako arenę.
-    permission: cavewars.admin
   cw:
-    description: Dołącza do gry.
+    description: Dolacz do areny.
   cavewars:
-    description: Alias do cw.
+    description: Dolacz do areny.
+  cwcreate:
+    description: Stworz nowa arene.
+    permission: cavewars.admin

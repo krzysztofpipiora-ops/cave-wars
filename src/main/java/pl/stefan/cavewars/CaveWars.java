@@ -38,27 +38,14 @@ public class CaveWars extends JavaPlugin implements Listener {
         int countdown = -1;
         int pvpGraceTime = 0; 
         List<Location> spawnPoints = new ArrayList<>();
-        Set<UUID> eliminated = new HashSet<>();
+        Set<UUID> eliminated = new HashSet<>(); // Lista graczy, którzy odpadli
         ArenaData(World world) { this.world = world; }
     }
 
     @Override
     public void onEnable() {
-        saveDefaultConfig();
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
-        
-        // Wczytywanie z zabezpieczeniem przed pustym configiem
-        if (getConfig().contains("arenas")) {
-            List<String> savedWorlds = getConfig().getStringList("arenas");
-            for (String worldName : savedWorlds) {
-                World world = Bukkit.getWorld(worldName);
-                if (world != null) {
-                    registeredWorlds.add(world.getUID());
-                    arenas.put(world.getUID(), new ArenaData(world));
-                }
-            }
-        }
         
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
@@ -121,7 +108,9 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onPvP(EntityDamageByEntityEvent event) {
         if (event.getEntity() instanceof Player && event.getDamager() instanceof Player) {
             ArenaData arena = arenas.get(event.getEntity().getWorld().getUID());
-            if (arena != null && arena.active && arena.pvpGraceTime > 0) event.setCancelled(true);
+            if (arena != null && arena.active && arena.pvpGraceTime > 0) {
+                event.setCancelled(true);
+            }
         }
     }
 
@@ -180,21 +169,32 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -5, 0);
     }
 
-    @EventHandler
+@EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
+        
         Block b = event.getBlock();
         Player p = event.getPlayer();
+        
+        // 0.5% szansy na skrzynkę zamiast bloku
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
-            p.sendMessage(ChatColor.GOLD + "Znalazłeś skrzynię!");
+            p.sendMessage(ChatColor.GOLD + "Znalazłeś ukrytą skrzynię!");
             event.setCancelled(true);
             return;
         }
+        
+        // Pobieramy dropy, które normalnie wypadłyby z bloku (z uwzględnieniem kilofa gracza)
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        for (ItemStack drop : drops) { p.getInventory().addItem(drop); }
+        
+        // Dodajemy każdy przedmiot bezpośrednio do ekwipunku
+        for (ItemStack drop : drops) {
+            p.getInventory().addItem(drop);
+        }
+        
+        // Usuwamy blok i blokujemy naturalny drop przedmiotów na ziemię
         b.setType(Material.AIR);
         event.setDropItems(false);
     }
@@ -211,9 +211,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player v = e.getEntity();
         ArenaData a = arenas.get(v.getWorld().getUID());
         if (a == null || !a.active) return;
-        a.eliminated.add(v.getUniqueId());
+        
+        a.eliminated.add(v.getUniqueId()); // Gracz odpada
         e.getDrops().clear(); 
         v.getInventory().clear();
+        
         Bukkit.getScheduler().runTaskLater(this, () -> checkWinner(a), 1L);
     }
 
@@ -221,11 +223,14 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onRespawn(PlayerRespawnEvent e) {
         Player p = e.getPlayer();
         ArenaData a = arenas.get(p.getWorld().getUID());
-        p.setGameMode(GameMode.ADVENTURE);
-        if (a != null && a.active && a.eliminated.contains(p.getUniqueId())) e.setRespawnLocation(a.world.getSpawnLocation());
-        else {
+        
+        if (a != null && a.active && a.eliminated.contains(p.getUniqueId())) {
+            p.setGameMode(GameMode.ADVENTURE); // Powrót jako Adventure
+            e.setRespawnLocation(a.world.getSpawnLocation());
+        } else {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
             if (w != null) e.setRespawnLocation(w.getSpawnLocation());
+            p.setGameMode(GameMode.ADVENTURE);
         }
     }
 
@@ -233,29 +238,40 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onQuit(PlayerQuitEvent e) {
         Player p = e.getPlayer();
         ArenaData a = arenas.get(p.getWorld().getUID());
-        if (a != null && a.active && !a.eliminated.contains(p.getUniqueId())) p.setHealth(0);
+        if (a != null && a.active && !a.eliminated.contains(p.getUniqueId())) {
+            p.setHealth(0); // Zabij gracza przy wyjściu, jeśli jeszcze żył
+        }
         removeBossBar(p);
     }
 
     private void checkWinner(ArenaData a) {
         if (!a.active) return;
+        
+        // Żywi gracze to ci w trybie SURVIVAL, którzy nie zostali wyeliminowani
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
                 .collect(Collectors.toList());
-        if (alive.size() <= 1) endGame(a, alive.isEmpty() ? null : alive.get(0));
+
+        if (alive.size() <= 1) {
+            endGame(a, alive.isEmpty() ? null : alive.get(0));
+        }
     }
 
     private void endGame(ArenaData a, Player winner) {
         if (!a.active) return;
         a.active = false;
+        
+        String name = (winner != null) ? winner.getName() : "Brak";
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
-        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwycięzca: " + (winner != null ? winner.getName() : "Brak"));
+        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwycięzca: " + ChatColor.WHITE + name);
+        
         Bukkit.getScheduler().runTaskLater(this, () -> {
             World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
             Location loc = (w != null) ? w.getSpawnLocation() : a.world.getSpawnLocation();
             for (Player p : a.world.getPlayers()) {
                 p.getInventory().clear(); p.setExp(0); p.setLevel(0);
-                p.teleport(loc); p.setGameMode(GameMode.ADVENTURE);
+                p.teleport(loc); 
+                p.setGameMode(GameMode.ADVENTURE);
                 removeBossBar(p);
             }
             a.world.getWorldBorder().setSize(100);
@@ -268,14 +284,17 @@ public class CaveWars extends JavaPlugin implements Listener {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
                 updateBossBar(p, a);
                 updateCompass(p, a);
-            } else removeBossBar(p);
+            } else {
+                removeBossBar(p);
+            }
         }
     }
 
     private void updateBossBar(Player p, ArenaData a) {
         WorldBorder b = a.world.getWorldBorder();
-        double dist = Math.min(Math.min((b.getCenter().getX() + b.getSize()/2) - p.getLocation().getX(), p.getLocation().getX() - (b.getCenter().getX() - b.getSize()/2)), 
-                               Math.min((b.getCenter().getZ() + b.getSize()/2) - p.getLocation().getZ(), p.getLocation().getZ() - (b.getCenter().getZ() - b.getSize()/2)));
+        double size = b.getSize() / 2;
+        double dist = Math.min(Math.min((b.getCenter().getX() + size) - p.getLocation().getX(), p.getLocation().getX() - (b.getCenter().getX() - size)), 
+                               Math.min((b.getCenter().getZ() + size) - p.getLocation().getZ(), p.getLocation().getZ() - (b.getCenter().getZ() - size)));
         BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(), k -> Bukkit.createBossBar("Granica", BarColor.GREEN, BarStyle.SOLID));
         bar.addPlayer(p);
         bar.setProgress(Math.max(0, Math.min(1, dist / 50.0)));
@@ -291,7 +310,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             }
         }
         String pvp = a.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + a.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
-        if (near != null) p.sendActionBar(pvp + ChatColor.GOLD + "| Cel: " + near.getName() + " (" + (int)dMin + "m)");
+        if (near != null) p.sendActionBar(pvp + ChatColor.GOLD + "| Najbliższy: " + near.getName() + " (" + (int)dMin + "m)");
         else p.sendActionBar(pvp);
     }
 
@@ -309,37 +328,11 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) return false;
-        
-        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { 
-            joinBestArena(p); 
-            return true; 
-        }
-        
-        if (c.getName().equalsIgnoreCase("cwcreate")) { 
-            if (!p.isOp()) {
-                p.sendMessage(ChatColor.RED + "Brak uprawnien!");
-                return true;
-            }
-            
-            UUID worldUID = p.getWorld().getUID();
-            String worldName = p.getWorld().getName();
-            
-            // PANCERNY SYSTEM ZAPISU (NAPRAWIA BŁĄD ZE ZDJĘCIA)
-            List<String> savedWorlds = getConfig().getStringList("arenas");
-            if (savedWorlds == null) savedWorlds = new ArrayList<>();
-            
-            if (!registeredWorlds.contains(worldUID)) {
-                registeredWorlds.add(worldUID); 
-                arenas.put(worldUID, new ArenaData(p.getWorld())); 
-                
-                savedWorlds.add(worldName);
-                getConfig().set("arenas", savedWorlds);
-                saveConfig();
-                
-                p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
-            } else {
-                p.sendMessage(ChatColor.RED + "Ta arena juz istnieje!");
-            }
+        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { joinBestArena(p); return true; }
+        if (p.isOp() && c.getName().equalsIgnoreCase("cwcreate")) { 
+            registeredWorlds.add(p.getWorld().getUID()); 
+            arenas.put(p.getWorld().getUID(), new ArenaData(p.getWorld())); 
+            p.sendMessage("Arena utworzona!"); 
             return true; 
         }
         return false;

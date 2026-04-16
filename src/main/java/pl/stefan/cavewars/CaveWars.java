@@ -44,22 +44,23 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @Override
     public void onEnable() {
-        // --- SYSTEM ZAPISU AREN ---
+        // Inicjalizacja konfiguracji
         saveDefaultConfig();
         Bukkit.getPluginManager().registerEvents(this, this);
         registerCustomRecipes();
         
-        // Wczytywanie aren z configu po restarcie
+        // Wczytywanie zapisanych aren
         List<String> savedWorlds = getConfig().getStringList("arenas");
         for (String worldName : savedWorlds) {
             World world = Bukkit.getWorld(worldName);
             if (world != null) {
                 registeredWorlds.add(world.getUID());
                 arenas.put(world.getUID(), new ArenaData(world));
-                getLogger().info("Wczytano zapisana arene: " + worldName);
+                getLogger().info("[CaveWars] Wczytano arene: " + worldName);
             }
         }
         
+        // Główny Timer Pluginu
         Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ArenaData arena : arenas.values()) {
                 if (arena.active) {
@@ -73,6 +74,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 20L, 20L);
     }
 
+    // --- SYSTEM CRAFTINGU NETHERITE (BEZ TEMPLATE) ---
     private void registerCustomRecipes() {
         addNetheriteUpgrade(Material.NETHERITE_INGOT, Material.NETHERITE_SCRAP, Material.DIAMOND, "cw_n_ing");
         addNetheriteUpgrade(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
@@ -91,6 +93,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         Bukkit.addRecipe(r);
     }
 
+    // --- GENERATOR ARENY ---
     private void generateSolidArena(World world) {
         int radius = 50;
         for (int x = -radius; x <= radius; x++) {
@@ -180,7 +183,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -5, 0);
     }
 
-    // --- POPRAWIONY SYSTEM DROPÓW DO EQ ---
+    // --- DROP DO EQ ---
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
@@ -197,7 +200,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
         
-        // Automatyczne zbieranie wszystkiego do EQ
+        // Zbieranie dropów do ekwipunku
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         for (ItemStack drop : drops) {
             p.getInventory().addItem(drop);
@@ -319,10 +322,17 @@ public class CaveWars extends JavaPlugin implements Listener {
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) return false;
-        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { joinBestArena(p); return true; }
         
-        // --- POPRAWIONE TWORZENIE ARENY Z ZAPISEM ---
-        if (p.isOp() && c.getName().equalsIgnoreCase("cwcreate")) { 
+        if (c.getName().equalsIgnoreCase("cw") || c.getName().equalsIgnoreCase("cavewars")) { 
+            joinBestArena(p); 
+            return true; 
+        }
+        
+        if (c.getName().equalsIgnoreCase("cwcreate")) { 
+            if (!p.isOp()) {
+                p.sendMessage(ChatColor.RED + "Brak uprawnien!");
+                return true;
+            }
             UUID worldUID = p.getWorld().getUID();
             String worldName = p.getWorld().getName();
             if (!registeredWorlds.contains(worldUID)) {
@@ -333,6 +343,8 @@ public class CaveWars extends JavaPlugin implements Listener {
                 getConfig().set("arenas", savedWorlds);
                 saveConfig();
                 p.sendMessage(ChatColor.GREEN + "Arena utworzona i zapisana!"); 
+            } else {
+                p.sendMessage(ChatColor.RED + "Ta arena juz istnieje!");
             }
             return true; 
         }

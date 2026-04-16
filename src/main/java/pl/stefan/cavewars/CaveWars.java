@@ -145,9 +145,17 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.pvpGraceTime = 180;
         arena.eliminated.clear();
         arena.spawnPoints.clear();
-        arena.world.getWorldBorder().setCenter(0, 0);
-        arena.world.getWorldBorder().setSize(100);
+    
+   // Ustawienie początkowego rozmiaru na 100x100
+    arena.world.getWorldBorder().setCenter(0, 0);
+    arena.world.getWorldBorder().setSize(100);
 
+    // Border zacznie się kurczyć do 10x10 w czasie 600 sekund (10 minut)
+    // Jeśli chcesz, aby działo się to szybciej, zmień 600 na mniejszą liczbę.
+    arena.world.getWorldBorder().setSize(10, 600); 
+    
+    broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10!");
+    
         for (Player p : arena.world.getPlayers()) {
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);

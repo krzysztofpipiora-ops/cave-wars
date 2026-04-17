@@ -46,8 +46,10 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
 
+        // Sztuczna granica
         double borderRadius = 50.0;
         int borderShrinkRemaining = 0;
+        boolean borderEnabled = false;   // granica włączana dopiero po starcie
 
         ArenaData(World world) {
             this.world = world;
@@ -79,7 +81,8 @@ public class CaveWars extends JavaPlugin implements Listener {
 
                     if (arena.pvpGraceTime > 0) arena.pvpGraceTime--;
 
-                    if (arena.borderShrinkRemaining > 0) {
+                    // Kurczenie granicy tylko gdy border jest włączony
+                    if (arena.borderEnabled && arena.borderShrinkRemaining > 0) {
                         arena.borderShrinkRemaining--;
                         double progress = (900.0 - arena.borderShrinkRemaining) / 900.0;
                         arena.borderRadius = 50.0 - 45.0 * progress;
@@ -93,7 +96,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 60L, 20L);
     }
 
-    // ==================== LOBBY - ODLCZANIE NA ŚRODKU EKRANU ====================
+    // ==================== LOBBY ====================
     private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
         if (count < 2) {
@@ -132,14 +135,17 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
+        // Włączamy border dopiero teraz
         arena.borderRadius = 50.0;
         arena.borderShrinkRemaining = 900;
+        arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
             p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", 
                        ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
         }
 
+        broadcastToWorld(arena.world, ChatColor.RED + "Sztuczna granica zaczęła się kurczyć do 10x10 w ciągu 15 minut!");
         broadcastToWorld(arena.world, ChatColor.GREEN + "Ochrona PvP aktywna przez 180 sekund!");
 
         for (Player p : arena.world.getPlayers()) {
@@ -174,8 +180,10 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -10, 0);
     }
 
-    // ==================== SZTUCZNA GRANICA ====================
+    // ==================== EFEKTY GRANICY ====================
     private void applyBorderEffects(Player p, ArenaData arena) {
+        if (!arena.borderEnabled) return;
+
         double x = p.getLocation().getX();
         double z = p.getLocation().getZ();
         double r = arena.borderRadius;
@@ -284,7 +292,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 1L);
     }
 
-    // ==================== CZYSZCZENIE GRACZA ====================
     private void resetPlayerAfterArena(Player p) {
         p.getInventory().clear();
         p.getInventory().setArmorContents(null);
@@ -437,6 +444,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     private void endGame(ArenaData a, Player winner) {
         if (!a.active) return;
         a.active = false;
+        a.borderEnabled = false;
 
         String name = (winner != null) ? winner.getName() : "Remis";
         broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
@@ -522,7 +530,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         } catch (Exception ignored) {}
     }
 
-    // ==================== GENEROWANIE ARENY ====================
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {

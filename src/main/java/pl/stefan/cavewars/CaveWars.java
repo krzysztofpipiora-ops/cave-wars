@@ -166,10 +166,10 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         WorldBorder border = arena.world.getWorldBorder();
         border.setCenter(0, 0);
-        border.setSize(100);                    // start 100x100
-        border.setSize(10, 900);                // kurczy się do 10x10 przez 15 minut (900 sekund)
-        border.setDamageBuffer(0);              // nie zadaje obrażeń poza borderem
-        border.setDamageAmount(0);              // gracz może niszczyć bloki poza borderem
+        border.setSize(100);
+        border.setSize(10, 900);           // 15 minut
+        border.setDamageBuffer(0);
+        border.setDamageAmount(0);
 
         broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10 w ciągu 15 minut!");
 
@@ -349,7 +349,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== KOMENDY ====================
+    // ==================== KOMENDA /cw – POPRAWIONA LOGIKA ====================
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) {
@@ -375,27 +375,34 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
 
         if (c.getName().equalsIgnoreCase("cw")) {
+            // Najpierw sprawdzamy czy gracz jest już na jakiejś aktywnej arenie
+            ArenaData current = arenas.get(p.getWorld().getUID());
+            if (current != null && current.active) {
+                p.sendMessage(ChatColor.RED + "Już jesteś na aktywnej arenie!");
+                return true;
+            }
+
+            // Szukamy wolnej (niewystartowanej) areny
             for (ArenaData a : arenas.values()) {
                 if (!a.active && a.world.getPlayers().size() < 12) {
-                    if (arenas.containsKey(p.getWorld().getUID()) && arenas.get(p.getWorld().getUID()).active) {
-                        p.sendMessage(ChatColor.RED + "Już jesteś na aktywnej arenie!");
-                        return true;
-                    }
                     p.teleport(a.world.getSpawnLocation().add(0.5, 1, 0.5));
                     p.setGameMode(GameMode.ADVENTURE);
-                    p.sendMessage(ChatColor.GREEN + "Dołączyłeś do areny! Czekaj na start...");
+                    p.sendMessage(ChatColor.GREEN + "Dołączyłeś do areny! Czekaj na rozpoczęcie gry...");
                     return true;
                 }
             }
-            p.sendMessage(ChatColor.RED + "Obecnie nie ma wolnych aren!");
+
+            // Jeśli nie znaleziono wolnej areny
+            p.sendMessage(ChatColor.RED + "Obecnie nie ma wolnych aren do dołączenia!");
+            p.sendMessage(ChatColor.GRAY + "Wszystkie areny są zajęte lub w trakcie gry.");
             return true;
         }
         return false;
     }
 
-    // ==================== RECEPTURY (NETHERITE BEZ TEMPLATE) ====================
+    // ==================== RECEPTURY ====================
     private void registerCustomRecipes() {
-        // Netherite Ingot bez template - 4 scrap + 4 gold ingot (shapeless)
+        // Netherite Ingot bez template
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);
         ShapelessRecipe netheriteRecipe = new ShapelessRecipe(netheriteKey, new ItemStack(Material.NETHERITE_INGOT));
@@ -403,7 +410,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         netheriteRecipe.addIngredient(4, Material.GOLD_INGOT);
         Bukkit.addRecipe(netheriteRecipe);
 
-        // Reszta narzędzi i zbroi (upgrade z diamond)
+        // Narzędzia i zbroja
         addRecipe(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
         addRecipe(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
         addRecipe(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");
@@ -426,7 +433,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         } catch (Exception ignored) {}
     }
 
-    // ==================== GENEROWANIE ARENY (z Lapis Lazuli) ====================
+    // ==================== GENEROWANIE ARENY ====================
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {
@@ -438,19 +445,19 @@ public class CaveWars extends JavaPlugin implements Listener {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
 
-                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);      // 0.8%
-                    else if (c < 0.016) b.setType(Material.BOOKSHELF);      // 0.8%
-                    else if (c < 0.056) b.setType(Material.LAPIS_ORE);      // 4.0% ← NOWO DODANE
-                    else if (c < 0.096) b.setType(Material.DIAMOND_ORE);    // 4.0%
-                    else if (c < 0.156) b.setType(Material.GOLD_ORE);       // 6.0%
-                    else if (c < 0.236) b.setType(Material.IRON_ORE);       // 8.0%
-                    else if (c < 0.266) b.setType(Material.OBSIDIAN);       // 3.0%
-                    else if (c < 0.296) b.setType(Material.GLOWSTONE);      // 3.0%
-                    else if (c < 0.326) b.setType(Material.GLASS);          // 3.0%
-                    else if (c < 0.356) b.setType(Material.MELON);          // 3.0%
-                    else if (c < 0.506) b.setType(Material.OAK_LOG);        // 15.0%
-                    else if (c < 0.606) b.setType(Material.OAK_LEAVES);     // 10.0%
-                    else b.setType(Material.STONE);                         // 25%
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);
+                    else if (c < 0.016) b.setType(Material.BOOKSHELF);
+                    else if (c < 0.056) b.setType(Material.LAPIS_ORE);
+                    else if (c < 0.096) b.setType(Material.DIAMOND_ORE);
+                    else if (c < 0.156) b.setType(Material.GOLD_ORE);
+                    else if (c < 0.236) b.setType(Material.IRON_ORE);
+                    else if (c < 0.266) b.setType(Material.OBSIDIAN);
+                    else if (c < 0.296) b.setType(Material.GLOWSTONE);
+                    else if (c < 0.326) b.setType(Material.GLASS);
+                    else if (c < 0.356) b.setType(Material.MELON);
+                    else if (c < 0.506) b.setType(Material.OAK_LOG);
+                    else if (c < 0.606) b.setType(Material.OAK_LEAVES);
+                    else b.setType(Material.STONE);
                 }
             }
         }

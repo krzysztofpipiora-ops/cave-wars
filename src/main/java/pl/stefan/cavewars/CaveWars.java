@@ -19,6 +19,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
+import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.FireworkMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -163,11 +164,14 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
-        arena.world.getWorldBorder().setCenter(0, 0);
-        arena.world.getWorldBorder().setSize(100);
-        arena.world.getWorldBorder().setSize(10, 600);
+        WorldBorder border = arena.world.getWorldBorder();
+        border.setCenter(0, 0);
+        border.setSize(100);                    // start 100x100
+        border.setSize(10, 900);                // kurczy się do 10x10 przez 15 minut (900 sekund)
+        border.setDamageBuffer(0);              // nie zadaje obrażeń poza borderem
+        border.setDamageAmount(0);              // gracz może niszczyć bloki poza borderem
 
-        broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10!");
+        broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10 w ciągu 15 minut!");
 
         for (Player p : arena.world.getPlayers()) {
             Location loc = findSafeSpawn(arena);
@@ -185,13 +189,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
             p.sendMessage(ChatColor.GREEN + "POWODZENIA! Masz 3 minuty ochrony pvp.");
         }
-
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            if (arena.active) {
-                arena.world.getWorldBorder().setSize(6, 600);
-                broadcastToWorld(arena.world, ChatColor.RED + "UWAGA! Granica świata zaczęła się kurczyć!");
-            }
-        }, 12000L);
     }
 
     private Location findSafeSpawn(ArenaData arena) {
@@ -262,7 +259,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         fw.setFireworkMeta(meta);
     }
 
-    // ==================== ACTION BAR – ODLEGŁOŚĆ DO NAJBLIŻSZEGO GRACZA ====================
+    // ==================== ACTION BAR ====================
     private void updateActiveArena(ArenaData a) {
         for (Player p : a.world.getPlayers()) {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
@@ -396,29 +393,64 @@ public class CaveWars extends JavaPlugin implements Listener {
         return false;
     }
 
-    // ==================== GENEROWANIE ARENY ====================
+    // ==================== RECEPTURY (NETHERITE BEZ TEMPLATE) ====================
+    private void registerCustomRecipes() {
+        // Netherite Ingot bez template - 4 scrap + 4 gold ingot (shapeless)
+        NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
+        if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);
+        ShapelessRecipe netheriteRecipe = new ShapelessRecipe(netheriteKey, new ItemStack(Material.NETHERITE_INGOT));
+        netheriteRecipe.addIngredient(4, Material.NETHERITE_SCRAP);
+        netheriteRecipe.addIngredient(4, Material.GOLD_INGOT);
+        Bukkit.addRecipe(netheriteRecipe);
+
+        // Reszta narzędzi i zbroi (upgrade z diamond)
+        addRecipe(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
+        addRecipe(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
+        addRecipe(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");
+        addRecipe(Material.NETHERITE_SHOVEL, Material.DIAMOND_SHOVEL, Material.NETHERITE_INGOT, "cw_n_sh");
+        addRecipe(Material.NETHERITE_HELMET, Material.DIAMOND_HELMET, Material.NETHERITE_INGOT, "cw_n_he");
+        addRecipe(Material.NETHERITE_CHESTPLATE, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_INGOT, "cw_n_ch");
+        addRecipe(Material.NETHERITE_LEGGINGS, Material.DIAMOND_LEGGINGS, Material.NETHERITE_INGOT, "cw_n_le");
+        addRecipe(Material.NETHERITE_BOOTS, Material.DIAMOND_BOOTS, Material.NETHERITE_INGOT, "cw_n_bo");
+    }
+
+    private void addRecipe(Material res, Material i1, Material i2, String k) {
+        try {
+            NamespacedKey key = new NamespacedKey(this, k);
+            if (Bukkit.getRecipe(key) != null) Bukkit.removeRecipe(key);
+            ShapedRecipe r = new ShapedRecipe(key, new ItemStack(res));
+            r.shape("AB");
+            r.setIngredient('A', i1);
+            r.setIngredient('B', i2);
+            Bukkit.addRecipe(r);
+        } catch (Exception ignored) {}
+    }
+
+    // ==================== GENEROWANIE ARENY (z Lapis Lazuli) ====================
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {
             for (int z = -r; z <= r; z++) {
                 world.getBlockAt(x, 20, z).setType(Material.BEDROCK);
                 world.getBlockAt(x, -31, z).setType(Material.BEDROCK);
+
                 for (int y = -30; y < 20; y++) {
                     Block b = world.getBlockAt(x, y, z);
                     double c = random.nextDouble();
 
-                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);
-                    else if (c < 0.016) b.setType(Material.BOOKSHELF);
-                    else if (c < 0.048) b.setType(Material.DIAMOND_ORE);
-                    else if (c < 0.108) b.setType(Material.GOLD_ORE);
-                    else if (c < 0.188) b.setType(Material.IRON_ORE);
-                    else if (c < 0.218) b.setType(Material.OBSIDIAN);
-                    else if (c < 0.248) b.setType(Material.GLOWSTONE);
-                    else if (c < 0.278) b.setType(Material.GLASS);
-                    else if (c < 0.308) b.setType(Material.MELON);
-                    else if (c < 0.458) b.setType(Material.OAK_LOG);
-                    else if (c < 0.558) b.setType(Material.OAK_LEAVES);
-                    else b.setType(Material.STONE);
+                    if (c < 0.008) b.setType(Material.ANCIENT_DEBRIS);      // 0.8%
+                    else if (c < 0.016) b.setType(Material.BOOKSHELF);      // 0.8%
+                    else if (c < 0.056) b.setType(Material.LAPIS_ORE);      // 4.0% ← NOWO DODANE
+                    else if (c < 0.096) b.setType(Material.DIAMOND_ORE);    // 4.0%
+                    else if (c < 0.156) b.setType(Material.GOLD_ORE);       // 6.0%
+                    else if (c < 0.236) b.setType(Material.IRON_ORE);       // 8.0%
+                    else if (c < 0.266) b.setType(Material.OBSIDIAN);       // 3.0%
+                    else if (c < 0.296) b.setType(Material.GLOWSTONE);      // 3.0%
+                    else if (c < 0.326) b.setType(Material.GLASS);          // 3.0%
+                    else if (c < 0.356) b.setType(Material.MELON);          // 3.0%
+                    else if (c < 0.506) b.setType(Material.OAK_LOG);        // 15.0%
+                    else if (c < 0.606) b.setType(Material.OAK_LEAVES);     // 10.0%
+                    else b.setType(Material.STONE);                         // 25%
                 }
             }
         }
@@ -461,29 +493,5 @@ public class CaveWars extends JavaPlugin implements Listener {
     private void removeBossBar(Player p) {
         BossBar b = playerBossBars.remove(p.getUniqueId());
         if (b != null) b.removeAll();
-    }
-
-    private void registerCustomRecipes() {
-        addRecipe(Material.NETHERITE_INGOT, Material.NETHERITE_SCRAP, Material.GOLD_INGOT, "cw_n_ing");
-        addRecipe(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
-        addRecipe(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
-        addRecipe(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");
-        addRecipe(Material.NETHERITE_SHOVEL, Material.DIAMOND_SHOVEL, Material.NETHERITE_INGOT, "cw_n_sh");
-        addRecipe(Material.NETHERITE_HELMET, Material.DIAMOND_HELMET, Material.NETHERITE_INGOT, "cw_n_he");
-        addRecipe(Material.NETHERITE_CHESTPLATE, Material.DIAMOND_CHESTPLATE, Material.NETHERITE_INGOT, "cw_n_ch");
-        addRecipe(Material.NETHERITE_LEGGINGS, Material.DIAMOND_LEGGINGS, Material.NETHERITE_INGOT, "cw_n_le");
-        addRecipe(Material.NETHERITE_BOOTS, Material.DIAMOND_BOOTS, Material.NETHERITE_INGOT, "cw_n_bo");
-    }
-
-    private void addRecipe(Material res, Material i1, Material i2, String k) {
-        try {
-            NamespacedKey key = new NamespacedKey(this, k);
-            if (Bukkit.getRecipe(key) != null) Bukkit.removeRecipe(key);
-            ShapedRecipe r = new ShapedRecipe(key, new ItemStack(res));
-            r.shape("AB");
-            r.setIngredient('A', i1);
-            r.setIngredient('B', i2);
-            Bukkit.addRecipe(r);
-        } catch (Exception ignored) {}
     }
 }

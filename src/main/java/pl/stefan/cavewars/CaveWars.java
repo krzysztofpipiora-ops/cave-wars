@@ -46,9 +46,8 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
 
-        // === SZTUCZNA GRANICA ===
-        double borderRadius = 50.0;        // aktualny promień
-        int borderShrinkRemaining = 0;     // ile sekund zostało do zakończenia kurczenia
+        double borderRadius = 50.0;
+        int borderShrinkRemaining = 0;
 
         ArenaData(World world) {
             this.world = world;
@@ -80,11 +79,10 @@ public class CaveWars extends JavaPlugin implements Listener {
 
                     if (arena.pvpGraceTime > 0) arena.pvpGraceTime--;
 
-                    // Kurczenie sztucznej granicy
                     if (arena.borderShrinkRemaining > 0) {
                         arena.borderShrinkRemaining--;
                         double progress = (900.0 - arena.borderShrinkRemaining) / 900.0;
-                        arena.borderRadius = 50.0 - 45.0 * progress; // kurczy się z 50 do 5
+                        arena.borderRadius = 50.0 - 45.0 * progress;
                     }
 
                     checkWinner(arena);
@@ -93,6 +91,209 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
         }, 60L, 20L);
+    }
+
+    // ==================== LOBBY - ODLCZANIE NA ŚRODKU EKRANU ====================
+    private void handleLobbyCountdown(ArenaData arena) {
+        int count = arena.world.getPlayers().size();
+        if (count < 2) {
+            arena.countdown = -1;
+            return;
+        }
+
+        if (arena.countdown == -1) arena.countdown = 60;
+        if (count >= 8 && arena.countdown > 15) arena.countdown = 15;
+
+        if (arena.countdown > 0) {
+            if (arena.countdown % 10 == 0 || arena.countdown <= 5) {
+                showCountdownTitle(arena.world, arena.countdown);
+            }
+            arena.countdown--;
+        } else if (arena.countdown == 0) {
+            arena.countdown = -1;
+            generateSolidArena(arena.world);
+            startMatch(arena);
+        }
+    }
+
+    private void showCountdownTitle(World world, int seconds) {
+        String title = ChatColor.YELLOW + "Gra wystartuje za";
+        String subtitle = ChatColor.BOLD + "" + ChatColor.WHITE + seconds + ChatColor.RED + "s";
+
+        for (Player p : world.getPlayers()) {
+            p.sendTitle(title, subtitle, 0, 50, 10);
+        }
+    }
+
+    // ==================== START GRY ====================
+    private void startMatch(ArenaData arena) {
+        arena.active = true;
+        arena.pvpGraceTime = 180;
+        arena.eliminated.clear();
+        arena.spawnPoints.clear();
+
+        arena.borderRadius = 50.0;
+        arena.borderShrinkRemaining = 900;
+
+        for (Player p : arena.world.getPlayers()) {
+            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", 
+                       ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
+        }
+
+        broadcastToWorld(arena.world, ChatColor.GREEN + "Ochrona PvP aktywna przez 180 sekund!");
+
+        for (Player p : arena.world.getPlayers()) {
+            Location loc = findSafeSpawn(arena);
+            arena.spawnPoints.add(loc);
+
+            for (int x = -1; x <= 1; x++)
+                for (int y = 0; y <= 2; y++)
+                    for (int z = -1; z <= 1; z++)
+                        loc.clone().add(x, y, z).getBlock().setType(Material.AIR);
+
+            p.teleport(loc.add(0.5, 0.1, 0.5));
+            p.setGameMode(GameMode.SURVIVAL);
+            p.getInventory().clear();
+            p.setLevel(30);
+            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
+        }
+    }
+
+    private Location findSafeSpawn(ArenaData arena) {
+        for (int i = 0; i < 250; i++) {
+            Location loc = new Location(arena.world, random.nextInt(70) - 35, -10, random.nextInt(70) - 35);
+            boolean far = true;
+            for (Location o : arena.spawnPoints) {
+                if (loc.distance(o) < 15) {
+                    far = false;
+                    break;
+                }
+            }
+            if (far) return loc;
+        }
+        return new Location(arena.world, 0, -10, 0);
+    }
+
+    // ==================== SZTUCZNA GRANICA ====================
+    private void applyBorderEffects(Player p, ArenaData arena) {
+        double x = p.getLocation().getX();
+        double z = p.getLocation().getZ();
+        double r = arena.borderRadius;
+
+        if (Math.abs(x) > r || Math.abs(z) > r) {
+            p.damage(2.0);
+            p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 60, 0, false, false));
+        } else {
+            p.removePotionEffect(PotionEffectType.BLINDNESS);
+        }
+    }
+
+    private void updateActiveArena(ArenaData a) {
+        for (Player p : a.world.getPlayers()) {
+            if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
+                updateBossBar(p, a);
+                sendDistanceActionBar(p, a);
+                applyBorderEffects(p, a);
+            } else {
+                removeBossBar(p);
+            }
+        }
+    }
+
+    private void sendDistanceActionBar(Player p, ArenaData arena) {
+        Player nearest = null;
+        double minDistance = Double.MAX_VALUE;
+        for (Player other : arena.world.getPlayers()) {
+            if (other.equals(p)) continue;
+            if (other.getGameMode() != GameMode.SURVIVAL) continue;
+            if (arena.eliminated.contains(other.getUniqueId())) continue;
+
+            double dist = p.getLocation().distance(other.getLocation());
+            if (dist < minDistance) {
+                minDistance = dist;
+                nearest = other;
+            }
+        }
+
+        String pvp = arena.pvpGraceTime > 0
+                ? ChatColor.GREEN + "Ochrona: " + arena.pvpGraceTime + "s "
+                : ChatColor.RED + "PvP: ON ";
+
+        if (nearest != null) {
+            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " + ChatColor.GOLD + "Najbliższy: " + ChatColor.WHITE + (int) minDistance + " bloków");
+        } else {
+            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " + ChatColor.YELLOW + "Brak innych żywych graczy");
+        }
+    }
+
+    private void updateBossBar(Player p, ArenaData a) {
+        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(),
+                k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
+        bar.addPlayer(p);
+
+        double r = a.borderRadius;
+        double minDistance = Math.min(r - Math.abs(p.getLocation().getX()), r - Math.abs(p.getLocation().getZ()));
+
+        bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int) minDistance + "m od Ciebie");
+        bar.setProgress(Math.max(0.0, Math.min(1.0, minDistance / 30.0)));
+        bar.setColor(minDistance > 15 ? BarColor.GREEN : BarColor.RED);
+    }
+
+    // ==================== KILL + PIORUN ====================
+    private void handlePlayerDeath(Player victim, Player killer) {
+        if (victim != null) {
+            victim.getWorld().strikeLightningEffect(victim.getLocation());
+        }
+
+        ArenaData arena = arenas.get(victim.getWorld().getUID());
+        if (arena == null || !arena.active) return;
+
+        String victimName = victim.getName();
+        String killerName = (killer != null) ? killer.getName() : "Nieznana siła";
+
+        broadcastToWorld(arena.world, ChatColor.RED + victimName + ChatColor.GRAY + " został zabity przez " + ChatColor.GOLD + killerName);
+
+        if (killer != null) {
+            int pointsGain = random.nextInt(6) + 4;
+            int pointsLoss = random.nextInt(5) + 14;
+
+            killer.sendMessage(ChatColor.GREEN + "✓ Zabiłeś " + ChatColor.RED + victimName);
+            killer.sendMessage(ChatColor.YELLOW + "   +" + pointsGain + " punktów za zabicie");
+            killer.sendMessage(ChatColor.RED + "   " + victimName + " otrzymał " + pointsLoss + " punktów kary");
+        }
+    }
+
+    @EventHandler
+    public void onDeath(PlayerDeathEvent e) {
+        Player victim = e.getEntity();
+        ArenaData a = arenas.get(victim.getWorld().getUID());
+        if (a == null || !a.active) return;
+
+        Player killer = victim.getKiller();
+
+        a.eliminated.add(victim.getUniqueId());
+        e.getDrops().clear();
+        victim.sendMessage(ChatColor.RED + "Zostałeś wyeliminowany!");
+
+        handlePlayerDeath(victim, killer);
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            victim.setGameMode(GameMode.SPECTATOR);
+            resetPlayerAfterArena(victim);
+            checkWinner(a);
+        }, 1L);
+    }
+
+    // ==================== CZYSZCZENIE GRACZA ====================
+    private void resetPlayerAfterArena(Player p) {
+        p.getInventory().clear();
+        p.getInventory().setArmorContents(null);
+        p.setLevel(0);
+        p.setExp(0);
+        p.setHealth(20.0);
+        p.setFoodLevel(20);
+        p.removePotionEffect(PotionEffectType.BLINDNESS);
+        removeBossBar(p);
     }
 
     // ==================== OCHRONA PVP ====================
@@ -110,7 +311,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== NISZCZENIE I STAWANIE BLOKÓW (pozwalamy poza granicą) ====================
+    // ==================== BLOKI ====================
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
@@ -160,7 +361,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Wszystkie inne bloki - można niszczyć także poza granicą
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         for (ItemStack item : drops) p.getInventory().addItem(item);
         b.setType(Material.AIR);
@@ -171,231 +371,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onBlockPlace(BlockPlaceEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena != null && arena.active) {
-            event.setCancelled(false); // pozwala stawiać poza granicą
-        }
-    }
-
-    // ==================== LOBBY & START ====================
-    private void handleLobbyCountdown(ArenaData arena) {
-        int count = arena.world.getPlayers().size();
-        if (count < 2) {
-            arena.countdown = -1;
-            return;
-        }
-        if (arena.countdown == -1) arena.countdown = 60;
-        if (count >= 8 && arena.countdown > 15) arena.countdown = 15;
-
-        if (arena.countdown > 0) {
-            if (arena.countdown % 10 == 0 || arena.countdown <= 5)
-                broadcastToWorld(arena.world, ChatColor.YELLOW + "Gra wystartuje za: " + ChatColor.WHITE + arena.countdown + "s");
-            arena.countdown--;
-        } else if (arena.countdown == 0) {
-            arena.countdown = -1;
-            generateSolidArena(arena.world);
-            startMatch(arena);
-        }
-    }
-
-    private void startMatch(ArenaData arena) {
-        arena.active = true;
-        arena.pvpGraceTime = 180;
-        arena.eliminated.clear();
-        arena.spawnPoints.clear();
-
-        // Inicjalizacja sztucznej granicy
-        arena.borderRadius = 50.0;
-        arena.borderShrinkRemaining = 900; // 15 minut = 900 sekund
-
-        broadcastToWorld(arena.world, ChatColor.RED + "Sztuczna granica zaczęła się kurczyć do 10x10 w ciągu 15 minut!");
-        broadcastToWorld(arena.world, ChatColor.GREEN + "Ochrona PvP aktywna przez 180 sekund!");
-
-        for (Player p : arena.world.getPlayers()) {
-            Location loc = findSafeSpawn(arena);
-            arena.spawnPoints.add(loc);
-
-            // Wyczyść spawn
-            for (int x = -1; x <= 1; x++)
-                for (int y = 0; y <= 2; y++)
-                    for (int z = -1; z <= 1; z++)
-                        loc.clone().add(x, y, z).getBlock().setType(Material.AIR);
-
-            p.teleport(loc.add(0.5, 0.1, 0.5));
-            p.setGameMode(GameMode.SURVIVAL);
-            p.getInventory().clear();
-            p.setLevel(30);
-            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
-            p.sendMessage(ChatColor.GREEN + "Masz 180 sekund ochrony PvP!");
-        }
-    }
-
-    private Location findSafeSpawn(ArenaData arena) {
-        for (int i = 0; i < 250; i++) {
-            Location loc = new Location(arena.world, random.nextInt(70) - 35, -10, random.nextInt(70) - 35);
-            boolean far = true;
-            for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 15) {
-                    far = false;
-                    break;
-                }
-            }
-            if (far) return loc;
-        }
-        return new Location(arena.world, 0, -10, 0);
-    }
-
-    // ==================== EFEKTY GRANICY ====================
-    private void applyBorderEffects(Player p, ArenaData arena) {
-        double x = p.getLocation().getX();
-        double z = p.getLocation().getZ();
-        double r = arena.borderRadius;
-
-        if (Math.abs(x) > r || Math.abs(z) > r) {
-            p.damage(2.0); // 2 HP na sekundę
-            p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 60, 0, false, false));
-        } else {
-            p.removePotionEffect(PotionEffectType.BLINDNESS);
-        }
-    }
-
-    // ==================== ACTION BAR + BOSSBAR ====================
-    private void updateActiveArena(ArenaData a) {
-        for (Player p : a.world.getPlayers()) {
-            if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
-                updateBossBar(p, a);
-                sendDistanceActionBar(p, a);
-                applyBorderEffects(p, a);        // efekty granicy
-            } else {
-                removeBossBar(p);
-            }
-        }
-    }
-
-    private void sendDistanceActionBar(Player p, ArenaData arena) {
-        Player nearest = null;
-        double minDistance = Double.MAX_VALUE;
-        for (Player other : arena.world.getPlayers()) {
-            if (other.equals(p)) continue;
-            if (other.getGameMode() != GameMode.SURVIVAL) continue;
-            if (arena.eliminated.contains(other.getUniqueId())) continue;
-
-            double dist = p.getLocation().distance(other.getLocation());
-            if (dist < minDistance) {
-                minDistance = dist;
-                nearest = other;
-            }
-        }
-
-        String pvp = arena.pvpGraceTime > 0
-                ? ChatColor.GREEN + "Ochrona: " + arena.pvpGraceTime + "s "
-                : ChatColor.RED + "PvP: ON ";
-
-        if (nearest != null) {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " +
-                           ChatColor.GOLD + "Najbliższy: " +
-                           ChatColor.WHITE + (int) minDistance + " bloków");
-        } else {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " +
-                           ChatColor.YELLOW + "Brak innych żywych graczy");
-        }
-    }
-
-    private void updateBossBar(Player p, ArenaData a) {
-        BossBar bar = playerBossBars.computeIfAbsent(p.getUniqueId(),
-                k -> Bukkit.createBossBar(ChatColor.RED + "Granica", BarColor.RED, BarStyle.SOLID));
-        bar.addPlayer(p);
-
-        double r = a.borderRadius;
-        double minDistance = Math.min(
-                r - Math.abs(p.getLocation().getX()),
-                r - Math.abs(p.getLocation().getZ())
-        );
-
-        bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int) minDistance + "m od Ciebie");
-        bar.setProgress(Math.max(0.0, Math.min(1.0, minDistance / 30.0)));
-        bar.setColor(minDistance > 15 ? BarColor.GREEN : BarColor.RED);
-    }
-
-    // ==================== KONIEC GRY ====================
-    private void checkWinner(ArenaData a) {
-        List<Player> alive = a.world.getPlayers().stream()
-                .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
-                .collect(Collectors.toList());
-
-        if (alive.size() <= 1)
-            endGame(a, alive.isEmpty() ? null : alive.get(0));
-    }
-
-    private void endGame(ArenaData a, Player winner) {
-        if (!a.active) return;
-        a.active = false;
-
-        String name = (winner != null) ? winner.getName() : "Remis";
-        broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
-        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
-
-        launchFireworks(a, winner);
-
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            World w = Bukkit.getWorld(SPAWN_WORLD_NAME);
-            for (Player p : a.world.getPlayers()) {
-                p.getInventory().clear();
-                p.teleport(w != null ? w.getSpawnLocation() : a.world.getSpawnLocation());
-                p.setGameMode(GameMode.ADVENTURE);
-                removeBossBar(p);
-            }
-        }, 160L);
-    }
-
-    private void launchFireworks(ArenaData arena, Player winner) {
-        if (winner != null) {
-            Location loc = winner.getLocation().clone().add(0, 8, 0);
-            for (int i = 0; i < 5; i++)
-                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(loc), i * 8L);
-        } else {
-            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
-            for (int i = 0; i < 8; i++)
-                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
-        }
-    }
-
-    private void spawnFirework(Location loc) {
-        Firework fw = loc.getWorld().spawn(loc, Firework.class);
-        FireworkMeta meta = fw.getFireworkMeta();
-        meta.addEffect(FireworkEffect.builder()
-                .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
-                .with(FireworkEffect.Type.BURST)
-                .trail(true)
-                .flicker(true)
-                .build());
-        meta.setPower(2);
-        fw.setFireworkMeta(meta);
-    }
-
-    @EventHandler
-    public void onDeath(PlayerDeathEvent e) {
-        Player v = e.getEntity();
-        ArenaData a = arenas.get(v.getWorld().getUID());
-        if (a == null || !a.active) return;
-
-        a.eliminated.add(v.getUniqueId());
-        e.getDrops().clear();
-        v.sendMessage(ChatColor.RED + "Zostałeś wyeliminowany!");
-
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            v.setGameMode(GameMode.SPECTATOR);
-            checkWinner(a);
-        }, 1L);
-    }
-
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent e) {
-        removeBossBar(e.getPlayer());
-    }
-
-    @EventHandler
-    public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
-        if (arenas.containsKey(e.getFrom().getUID())) {
-            removeBossBar(e.getPlayer());
+            event.setCancelled(false);
         }
     }
 
@@ -436,6 +412,8 @@ public class CaveWars extends JavaPlugin implements Listener {
                     p.teleport(a.world.getSpawnLocation().add(0.5, 1, 0.5));
                     p.setGameMode(GameMode.ADVENTURE);
                     p.sendMessage(ChatColor.GREEN + "Dołączyłeś do areny! Czekaj na rozpoczęcie gry...");
+
+                    broadcastToWorld(a.world, ChatColor.LIGHT_PURPLE + "§lDołączył na arenę §f" + p.getName());
                     return true;
                 }
             }
@@ -443,6 +421,74 @@ public class CaveWars extends JavaPlugin implements Listener {
             return true;
         }
         return false;
+    }
+
+    // ==================== KONIEC GRY ====================
+    private void checkWinner(ArenaData a) {
+        List<Player> alive = a.world.getPlayers().stream()
+                .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
+                .collect(Collectors.toList());
+
+        if (alive.size() <= 1) {
+            endGame(a, alive.isEmpty() ? null : alive.get(0));
+        }
+    }
+
+    private void endGame(ArenaData a, Player winner) {
+        if (!a.active) return;
+        a.active = false;
+
+        String name = (winner != null) ? winner.getName() : "Remis";
+        broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
+        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
+
+        launchFireworks(a, winner);
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            World spawnWorld = Bukkit.getWorld(SPAWN_WORLD_NAME);
+            for (Player p : a.world.getPlayers()) {
+                p.teleport(spawnWorld != null ? spawnWorld.getSpawnLocation() : a.world.getSpawnLocation());
+                p.setGameMode(GameMode.ADVENTURE);
+                resetPlayerAfterArena(p);
+            }
+        }, 160L);
+    }
+
+    private void launchFireworks(ArenaData arena, Player winner) {
+        if (winner != null) {
+            Location loc = winner.getLocation().clone().add(0, 8, 0);
+            for (int i = 0; i < 5; i++)
+                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(loc), i * 8L);
+        } else {
+            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
+            for (int i = 0; i < 8; i++)
+                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
+        }
+    }
+
+    private void spawnFirework(Location loc) {
+        Firework fw = loc.getWorld().spawn(loc, Firework.class);
+        FireworkMeta meta = fw.getFireworkMeta();
+        meta.addEffect(FireworkEffect.builder()
+                .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
+                .with(FireworkEffect.Type.BURST)
+                .trail(true)
+                .flicker(true)
+                .build());
+        meta.setPower(2);
+        fw.setFireworkMeta(meta);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent e) {
+        removeBossBar(e.getPlayer());
+    }
+
+    @EventHandler
+    public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
+        if (arenas.containsKey(e.getFrom().getUID())) {
+            resetPlayerAfterArena(e.getPlayer());
+        }
     }
 
     // ==================== RECEPTURY ====================

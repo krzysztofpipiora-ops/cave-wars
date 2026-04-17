@@ -40,7 +40,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         World world;
         boolean active = false;
         int countdown = -1;
-        int pvpGraceTime = 180;        // Zawsze zaczyna od 180 sekund
+        int pvpGraceTime = 180;
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
 
@@ -83,7 +83,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 60L, 20L);
     }
 
-    // ==================== OCHRONA PVP (nadpisuje WorldGuard) ====================
+    // ==================== OCHRONA PVP ====================
     @EventHandler(ignoreCancelled = true)
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player victim)) return;
@@ -92,20 +92,19 @@ public class CaveWars extends JavaPlugin implements Listener {
         ArenaData arena = arenas.get(victim.getWorld().getUID());
         if (arena == null || !arena.active) return;
 
-        // Jeśli trwa ochrona PvP (grace period) - anulujemy obrażenia
         if (arena.pvpGraceTime > 0) {
             event.setCancelled(true);
             attacker.sendMessage(ChatColor.RED + "Ochrona PvP jest jeszcze aktywna! (" + arena.pvpGraceTime + "s)");
-            return;
         }
     }
 
-    // ==================== NADPISYWANIE WORLDGUARD - BLOKI ====================
+    // ==================== NADPISYWANIE WORLDGUARD + POZWOLENIE NA NISZCZENIE ZA BORDEREM ====================
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
 
+        // Zawsze pozwalamy niszczyć bloki na arenie (nawet poza borderem)
         Player p = event.getPlayer();
         Block b = event.getBlock();
         Material type = b.getType();
@@ -153,6 +152,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
+        // Wszystkie inne bloki - w tym poza borderem
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         for (ItemStack item : drops) p.getInventory().addItem(item);
         b.setType(Material.AIR);
@@ -163,7 +163,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onBlockPlace(BlockPlaceEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena != null && arena.active) {
-            event.setCancelled(false); // Pozwalamy stawiać bloki
+            event.setCancelled(false); // Pozwalamy stawiać bloki nawet poza borderem
         }
     }
 
@@ -187,16 +187,16 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void startMatch(ArenaData arena) {
         arena.active = true;
-        arena.pvpGraceTime = 180;        // Zawsze 180 sekund ochrony
+        arena.pvpGraceTime = 180;
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
         WorldBorder border = arena.world.getWorldBorder();
         border.setCenter(0, 0);
         border.setSize(100);
-        border.setSize(10, 900);           // 15 minut kurczenia
-        border.setDamageBuffer(0);
-        border.setDamageAmount(0);
+        border.setSize(10, 900);           // 15 minut
+        border.setDamageBuffer(0);         // obrażenia od razu
+        border.setDamageAmount(2.0);       // 2 hp na sekundę
 
         broadcastToWorld(arena.world, ChatColor.RED + "Border zaczął się kurczyć do rozmiaru 10x10 w ciągu 15 minut!");
         broadcastToWorld(arena.world, ChatColor.GREEN + "Ochrona PvP aktywna przez 180 sekund!");
@@ -230,9 +230,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         return new Location(arena.world, 0, -10, 0);
     }
 
-    // ==================== KONIEC GRY, ACTION BAR, BOSS BAR, KOMENDY, RECEPTURY, GENEROWANIE ====================
-    // (pozostała część kodu pozostaje bez zmian - jest taka sama jak w poprzedniej wersji)
-
+    // ==================== KONIEC GRY ====================
     private void checkWinner(ArenaData a) {
         List<Player> alive = a.world.getPlayers().stream()
                 .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
@@ -289,6 +287,18 @@ public class CaveWars extends JavaPlugin implements Listener {
         fw.setFireworkMeta(meta);
     }
 
+    // ==================== ACTION BAR ====================
+    private void updateActiveArena(ArenaData a) {
+        for (Player p : a.world.getPlayers()) {
+            if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
+                updateBossBar(p, a);
+                sendDistanceActionBar(p, a);
+            } else {
+                removeBossBar(p);
+            }
+        }
+    }
+
     private void sendDistanceActionBar(Player p, ArenaData arena) {
         Player nearest = null;
         double minDistance = Double.MAX_VALUE;
@@ -316,17 +326,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         } else {
             p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " + 
                            ChatColor.YELLOW + "Brak innych żywych graczy");
-        }
-    }
-
-    private void updateActiveArena(ArenaData a) {
-        for (Player p : a.world.getPlayers()) {
-            if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
-                updateBossBar(p, a);
-                sendDistanceActionBar(p, a);
-            } else {
-                removeBossBar(p);
-            }
         }
     }
 
@@ -378,6 +377,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
+    // ==================== KOMENDY ====================
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) {
@@ -424,6 +424,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         return false;
     }
 
+    // ==================== RECEPTURY ====================
     private void registerCustomRecipes() {
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);
@@ -455,6 +456,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         } catch (Exception ignored) {}
     }
 
+    // ==================== GENEROWANIE ARENY ====================
     private void generateSolidArena(World world) {
         int r = 50;
         for (int x = -r; x <= r; x++) {

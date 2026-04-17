@@ -46,7 +46,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
 
-        // Sztuczna granica
         double borderRadius = 100.0;
         int borderShrinkRemaining = 0;
         boolean borderEnabled = false;
@@ -133,7 +132,10 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
-        // Włączamy border dopiero po starcie
+        // Wyłączenie prawdziwego WorldBordera (żeby nie było pasów na niebie)
+        disableRealWorldBorder(arena.world);
+
+        // Włączamy naszą sztuczną granicę
         arena.borderRadius = 100.0;
         arena.borderShrinkRemaining = 900;
         arena.borderEnabled = true;
@@ -162,6 +164,16 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.setLevel(30);
             p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
         }
+    }
+
+    private void disableRealWorldBorder(World world) {
+        WorldBorder wb = world.getWorldBorder();
+        wb.setCenter(0, 0);
+        wb.setSize(20000);        // bardzo duży, niewidoczny
+        wb.setDamageAmount(0);
+        wb.setDamageBuffer(0);
+        wb.setWarningDistance(0);
+        wb.setWarningTime(0);
     }
 
     private Location findSafeSpawn(ArenaData arena) {
@@ -498,7 +510,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== RECEPTURY ====================
+    // ==================== RECEPTURY I GENEROWANIE ====================
     private void registerCustomRecipes() {
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);

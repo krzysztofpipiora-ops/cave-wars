@@ -71,12 +71,12 @@ public class CaveWars extends JavaPlugin implements Listener {
             RegisteredServiceProvider<Economy> rsp = Bukkit.getServicesManager().getRegistration(Economy.class);
             if (rsp != null) {
                 economy = rsp.getProvider();
-                getLogger().info("§aVault Economy pomyślnie podłączony! Punkty za zabójstwa i wygrane będą dodawane do konta gracza.");
+                getLogger().info("§aVault Economy pomyślnie podłączony!");
             } else {
                 getLogger().warning("§eVault znaleziony, ale brak dostawcy Economy!");
             }
         } else {
-            getLogger().warning("§ePlugin Vault nie został znaleziony! Punkty będą tylko wyświetlane w wiadomościach.");
+            getLogger().warning("§ePlugin Vault nie został znaleziony!");
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
@@ -104,6 +104,17 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
         }, 60L, 20L);
+    }
+
+    // ==================== BORDER ŚWIATA 200x200 ====================
+    private void setArenaWorldBorder(World world) {
+        WorldBorder wb = world.getWorldBorder();
+        wb.setCenter(0, 0);
+        wb.setSize(200);           // ZAWSZE 200x200
+        wb.setDamageAmount(0);
+        wb.setDamageBuffer(0);
+        wb.setWarningDistance(0);
+        wb.setWarningTime(0);
     }
 
     // ==================== LOBBY ====================
@@ -151,7 +162,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.pvpGraceTime = 180;
         arena.eliminated.clear();
         arena.spawnPoints.clear();
-        disableRealWorldBorder(arena.world);
+
+        setArenaWorldBorder(arena.world);   // Ustawienie bordera na 200x200
+
         arena.borderRadius = 200.0;
         arena.borderShrinkRemaining = 1500;
         arena.borderEnabled = true;
@@ -165,7 +178,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
 
-            // Wyczyść przestrzeń wokół spawnu
             for (int x = -1; x <= 1; x++)
                 for (int y = 0; y <= 2; y++)
                     for (int z = -1; z <= 1; z++)
@@ -191,16 +203,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         p.setLevel(30);
         p.setExp(0.0f);
         p.setTotalExperience(0);
-    }
-
-    private void disableRealWorldBorder(World world) {
-        WorldBorder wb = world.getWorldBorder();
-        wb.setCenter(0, 0);
-        wb.setSize(20000);
-        wb.setDamageAmount(0);
-        wb.setDamageBuffer(0);
-        wb.setWarningDistance(0);
-        wb.setWarningTime(0);
     }
 
     private Location findSafeSpawn(ArenaData arena) {
@@ -236,6 +238,8 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void updateActiveArena(ArenaData a) {
+        setArenaWorldBorder(a.world); // Zabezpieczenie - zawsze 200x200
+
         for (Player p : a.world.getPlayers()) {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
                 updateBossBar(p, a);
@@ -315,7 +319,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player killer = victim.getKiller();
         a.eliminated.add(victim.getUniqueId());
 
-        // Itemy wypadają na ziemię
         e.setKeepInventory(false);
         e.getDrops().clear();
 

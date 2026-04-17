@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerChangedWorldEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -81,14 +82,14 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 60L, 20L);
     }
 
-    // ==================== SYSTEM DROPÓW ====================
-    @EventHandler
+    // ==================== NADPISYWANIE WORLDGUARD ====================
+    @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
 
-        Block b = event.getBlock();
         Player p = event.getPlayer();
+        Block b = event.getBlock();
         Material type = b.getType();
 
         if (type == Material.OAK_LEAVES) {
@@ -134,10 +135,19 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
+        // Wszystkie inne bloki
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         for (ItemStack item : drops) p.getInventory().addItem(item);
         b.setType(Material.AIR);
         event.setDropItems(false);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onBlockPlace(BlockPlaceEvent event) {
+        ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
+        if (arena != null && arena.active) {
+            event.setCancelled(false); // Nadpisujemy WorldGuard
+        }
     }
 
     // ==================== LOBBY & START ====================
@@ -167,7 +177,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         WorldBorder border = arena.world.getWorldBorder();
         border.setCenter(0, 0);
         border.setSize(100);
-        border.setSize(10, 900);           // 15 minut
+        border.setSize(10, 900);        // 15 minut
         border.setDamageBuffer(0);
         border.setDamageAmount(0);
 
@@ -349,7 +359,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== KOMENDA /cw – POPRAWIONA LOGIKA ====================
+    // ==================== KOMENDY ====================
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) {
@@ -375,14 +385,12 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
 
         if (c.getName().equalsIgnoreCase("cw")) {
-            // Najpierw sprawdzamy czy gracz jest już na jakiejś aktywnej arenie
             ArenaData current = arenas.get(p.getWorld().getUID());
             if (current != null && current.active) {
                 p.sendMessage(ChatColor.RED + "Już jesteś na aktywnej arenie!");
                 return true;
             }
 
-            // Szukamy wolnej (niewystartowanej) areny
             for (ArenaData a : arenas.values()) {
                 if (!a.active && a.world.getPlayers().size() < 12) {
                     p.teleport(a.world.getSpawnLocation().add(0.5, 1, 0.5));
@@ -392,25 +400,24 @@ public class CaveWars extends JavaPlugin implements Listener {
                 }
             }
 
-            // Jeśli nie znaleziono wolnej areny
             p.sendMessage(ChatColor.RED + "Obecnie nie ma wolnych aren do dołączenia!");
-            p.sendMessage(ChatColor.GRAY + "Wszystkie areny są zajęte lub w trakcie gry.");
             return true;
         }
         return false;
     }
 
-    // ==================== RECEPTURY ====================
+    // ==================== RECEPTURY – NETHERITE BEZ TEMPLATE ====================
     private void registerCustomRecipes() {
-        // Netherite Ingot bez template
+        // Netherite Ingot: 4 Scrap + 4 Gold Ingot (bez template)
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);
+
         ShapelessRecipe netheriteRecipe = new ShapelessRecipe(netheriteKey, new ItemStack(Material.NETHERITE_INGOT));
         netheriteRecipe.addIngredient(4, Material.NETHERITE_SCRAP);
         netheriteRecipe.addIngredient(4, Material.GOLD_INGOT);
         Bukkit.addRecipe(netheriteRecipe);
 
-        // Narzędzia i zbroja
+        // Netherite narzędzia i zbroja
         addRecipe(Material.NETHERITE_SWORD, Material.DIAMOND_SWORD, Material.NETHERITE_INGOT, "cw_n_sw");
         addRecipe(Material.NETHERITE_PICKAXE, Material.DIAMOND_PICKAXE, Material.NETHERITE_INGOT, "cw_n_pi");
         addRecipe(Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.NETHERITE_INGOT, "cw_n_ax");

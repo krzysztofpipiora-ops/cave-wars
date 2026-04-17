@@ -1,5 +1,6 @@
 package pl.stefan.cavewars;
 
+import net.milkbowl.vault.economy.Economy;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
@@ -23,6 +24,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.ShapelessRecipe;
 import org.bukkit.inventory.meta.FireworkMeta;
+import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -38,6 +40,8 @@ public class CaveWars extends JavaPlugin implements Listener {
     private final List<UUID> registeredWorlds = new ArrayList<>();
     private final String SPAWN_WORLD_NAME = "world";
 
+    private Economy econ = null;
+
     private static class ArenaData {
         World world;
         boolean active = false;
@@ -46,7 +50,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
 
-        double borderRadius = 100.0;
+        double borderRadius = 200.0;
         int borderShrinkRemaining = 0;
         boolean borderEnabled = false;
 
@@ -61,6 +65,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             if (!getDataFolder().exists()) getDataFolder().mkdirs();
             try { saveDefaultConfig(); } catch (Exception ignored) {}
             Bukkit.getPluginManager().registerEvents(this, this);
+            setupEconomy();
             registerCustomRecipes();
             Bukkit.getScheduler().runTaskLater(this, () -> {
                 loadArenas();
@@ -69,6 +74,18 @@ public class CaveWars extends JavaPlugin implements Listener {
             startMainTask();
         } catch (Exception e) {
             e.printStackTrace();
+        }
+    }
+
+    private void setupEconomy() {
+        if (Bukkit.getPluginManager().getPlugin("Vault") == null) {
+            getLogger().warning("Vault nie został znaleziony!");
+            return;
+        }
+        RegisteredServiceProvider<Economy> rsp = Bukkit.getServicesManager().getRegistration(Economy.class);
+        if (rsp != null) {
+            econ = rsp.getProvider();
+            getLogger().info("Vault Economy podłączone pomyślnie!");
         }
     }
 
@@ -82,8 +99,8 @@ public class CaveWars extends JavaPlugin implements Listener {
 
                     if (arena.borderEnabled && arena.borderShrinkRemaining > 0) {
                         arena.borderShrinkRemaining--;
-                        double progress = (900.0 - arena.borderShrinkRemaining) / 900.0;
-                        arena.borderRadius = 100.0 - 90.0 * progress; // 100 → 10
+                        double progress = (1500.0 - arena.borderShrinkRemaining) / 1500.0;
+                        arena.borderRadius = 200.0 - 190.0 * progress;
                     }
 
                     checkWinner(arena);
@@ -101,7 +118,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             arena.countdown = -1;
             return;
         }
-
         if (arena.countdown == -1) arena.countdown = 60;
         if (count >= 8 && arena.countdown > 15) arena.countdown = 15;
 
@@ -119,7 +135,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void showCountdownTitle(World world, int seconds) {
         String title = ChatColor.YELLOW + "Gra wystartuje za";
-        String subtitle = ChatColor.BOLD + "" + ChatColor.WHITE + seconds + ChatColor.RED + "s";
+        String subtitle = ChatColor.YELLOW + "" + ChatColor.BOLD + seconds + ChatColor.RED + "s";
         for (Player p : world.getPlayers()) {
             p.sendTitle(title, subtitle, 0, 50, 10);
         }
@@ -132,21 +148,19 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.eliminated.clear();
         arena.spawnPoints.clear();
 
-        // Wyłączenie prawdziwego WorldBordera (żeby nie było pasów na niebie)
         disableRealWorldBorder(arena.world);
 
-        // Włączamy naszą sztuczną granicę
-        arena.borderRadius = 100.0;
-        arena.borderShrinkRemaining = 900;
+        arena.borderRadius = 200.0;
+        arena.borderShrinkRemaining = 1500; // 25 minut
         arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
             p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", 
-                       ChatColor.GOLD + "Powodzenia!", 10, 70, 20);
+                       ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
         }
 
         broadcastToWorld(arena.world, ChatColor.RED + "§lSztuczna granica zaczęła się kurczyć!");
-        broadcastToWorld(arena.world, ChatColor.RED + "Z 100x100 do 10x10 w ciągu 15 minut");
+        broadcastToWorld(arena.world, ChatColor.RED + "Z 200x200 do 10x10 w ciągu 25 minut");
         broadcastToWorld(arena.world, ChatColor.GREEN + "Ochrona PvP aktywna przez 180 sekund!");
 
         for (Player p : arena.world.getPlayers()) {
@@ -169,7 +183,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     private void disableRealWorldBorder(World world) {
         WorldBorder wb = world.getWorldBorder();
         wb.setCenter(0, 0);
-        wb.setSize(20000);        // bardzo duży, niewidoczny
+        wb.setSize(20000);
         wb.setDamageAmount(0);
         wb.setDamageBuffer(0);
         wb.setWarningDistance(0);
@@ -177,11 +191,11 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private Location findSafeSpawn(ArenaData arena) {
-        for (int i = 0; i < 250; i++) {
-            Location loc = new Location(arena.world, random.nextInt(90) - 45, -10, random.nextInt(90) - 45);
+        for (int i = 0; i < 300; i++) {
+            Location loc = new Location(arena.world, random.nextInt(180) - 90, -10, random.nextInt(180) - 90);
             boolean far = true;
             for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 20) {
+                if (loc.distance(o) < 25) {
                     far = false;
                     break;
                 }
@@ -202,6 +216,10 @@ public class CaveWars extends JavaPlugin implements Listener {
         if (Math.abs(x) > r || Math.abs(z) > r) {
             p.damage(2.0);
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 60, 0, false, false));
+
+            if (random.nextInt(8) == 0) {
+                p.sendTitle(ChatColor.RED + "§lPOZA GRANICĄ!", ChatColor.GRAY + "Wracaj do środka!", 0, 25, 10);
+            }
         } else {
             p.removePotionEffect(PotionEffectType.BLINDNESS);
         }
@@ -254,11 +272,18 @@ public class CaveWars extends JavaPlugin implements Listener {
         double minDistance = Math.min(r - Math.abs(p.getLocation().getX()), r - Math.abs(p.getLocation().getZ()));
 
         bar.setTitle(ChatColor.RED + "Granica: " + ChatColor.WHITE + (int) minDistance + "m od Ciebie");
-        bar.setProgress(Math.max(0.0, Math.min(1.0, minDistance / 40.0)));
-        bar.setColor(minDistance > 20 ? BarColor.GREEN : BarColor.RED);
+        bar.setProgress(Math.max(0.0, Math.min(1.0, minDistance / 50.0)));
+        bar.setColor(minDistance > 25 ? BarColor.GREEN : BarColor.RED);
     }
 
-    // ==================== KILL + PIORUN ====================
+    // ==================== DOŁĄCZENIE ====================
+    private void handlePlayerJoinArena(Player p, ArenaData arena) {
+        int current = arena.world.getPlayers().size();
+        String msg = ChatColor.GRAY + p.getName() + " dołączył na arenę!!! (" + current + "/8)";
+        broadcastToWorld(arena.world, msg);
+    }
+
+    // ==================== KILL + VAULT ====================
     private void handlePlayerDeath(Player victim, Player killer) {
         if (victim != null) {
             victim.getWorld().strikeLightningEffect(victim.getLocation());
@@ -272,13 +297,11 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         broadcastToWorld(arena.world, ChatColor.RED + victimName + ChatColor.GRAY + " został zabity przez " + ChatColor.GOLD + killerName);
 
-        if (killer != null) {
-            int pointsGain = random.nextInt(6) + 4;
-            int pointsLoss = random.nextInt(5) + 14;
-
+        if (killer != null && econ != null) {
+            double gain = random.nextInt(6) + 4;
+            econ.depositPlayer(killer, gain);
             killer.sendMessage(ChatColor.GREEN + "✓ Zabiłeś " + ChatColor.RED + victimName);
-            killer.sendMessage(ChatColor.YELLOW + "   +" + pointsGain + " punktów za zabicie");
-            killer.sendMessage(ChatColor.RED + "   " + victimName + " otrzymał " + pointsLoss + " punktów kary");
+            killer.sendMessage(ChatColor.YELLOW + "   +" + gain + " punktów");
         }
     }
 
@@ -292,6 +315,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         a.eliminated.add(victim.getUniqueId());
         e.getDrops().clear();
+
         victim.sendMessage(ChatColor.RED + "Zostałeś wyeliminowany!");
 
         handlePlayerDeath(victim, killer);
@@ -306,15 +330,79 @@ public class CaveWars extends JavaPlugin implements Listener {
     private void resetPlayerAfterArena(Player p) {
         p.getInventory().clear();
         p.getInventory().setArmorContents(null);
-        p.setLevel(0);
-        p.setExp(0);
         p.setHealth(20.0);
         p.setFoodLevel(20);
         p.removePotionEffect(PotionEffectType.BLINDNESS);
         removeBossBar(p);
     }
 
-    // ==================== OCHRONA PVP ====================
+    // ==================== KONIEC GRY ====================
+    private void checkWinner(ArenaData a) {
+        List<Player> alive = a.world.getPlayers().stream()
+                .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
+                .collect(Collectors.toList());
+
+        if (alive.size() <= 1) {
+            endGame(a, alive.isEmpty() ? null : alive.get(0));
+        }
+    }
+
+    private void endGame(ArenaData a, Player winner) {
+        if (!a.active) return;
+        a.active = false;
+        a.borderEnabled = false;
+
+        String name = (winner != null) ? winner.getName() : "Remis";
+
+        for (Player p : a.world.getPlayers()) {
+            p.sendTitle(ChatColor.GOLD + "§lKONIEC GRY", 
+                       ChatColor.YELLOW + "Zwycięzca: " + ChatColor.WHITE + name, 10, 140, 40);
+        }
+
+        if (winner != null && econ != null) {
+            double reward = 50.0;
+            econ.depositPlayer(winner, reward);
+            winner.sendMessage(ChatColor.GOLD + "§l+" + reward + " punktów za wygranie areny!");
+        }
+
+        launchFireworks(a, winner);
+
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            World spawnWorld = Bukkit.getWorld(SPAWN_WORLD_NAME);
+            for (Player p : a.world.getPlayers()) {
+                p.teleport(spawnWorld != null ? spawnWorld.getSpawnLocation() : a.world.getSpawnLocation());
+                p.setGameMode(GameMode.ADVENTURE);
+                resetPlayerAfterArena(p);
+            }
+        }, 160L);
+    }
+
+    private void launchFireworks(ArenaData arena, Player winner) {
+        if (winner != null) {
+            Location loc = winner.getLocation().clone().add(0, 8, 0);
+            for (int i = 0; i < 5; i++)
+                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(loc), i * 8L);
+        } else {
+            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
+            for (int i = 0; i < 8; i++)
+                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
+        }
+    }
+
+    private void spawnFirework(Location loc) {
+        Firework fw = loc.getWorld().spawn(loc, Firework.class);
+        FireworkMeta meta = fw.getFireworkMeta();
+        meta.addEffect(FireworkEffect.builder()
+                .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
+                .with(FireworkEffect.Type.BURST)
+                .trail(true)
+                .flicker(true)
+                .build());
+        meta.setPower(2);
+        fw.setFireworkMeta(meta);
+    }
+
+    // ==================== EVENTY ====================
     @EventHandler(ignoreCancelled = true)
     public void onEntityDamageByEntity(EntityDamageByEntityEvent event) {
         if (!(event.getEntity() instanceof Player victim)) return;
@@ -329,7 +417,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== BLOKI ====================
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
@@ -393,7 +480,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== KOMENDY ====================
     @Override
     public boolean onCommand(CommandSender s, Command c, String l, String[] args) {
         if (!(s instanceof Player p)) {
@@ -431,7 +517,7 @@ public class CaveWars extends JavaPlugin implements Listener {
                     p.setGameMode(GameMode.ADVENTURE);
                     p.sendMessage(ChatColor.GREEN + "Dołączyłeś do areny! Czekaj na rozpoczęcie gry...");
 
-                    broadcastToWorld(a.world, ChatColor.LIGHT_PURPLE + "§lDołączył na arenę §f" + p.getName());
+                    handlePlayerJoinArena(p, a);
                     return true;
                 }
             }
@@ -439,63 +525,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return true;
         }
         return false;
-    }
-
-    // ==================== KONIEC GRY ====================
-    private void checkWinner(ArenaData a) {
-        List<Player> alive = a.world.getPlayers().stream()
-                .filter(p -> p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId()))
-                .collect(Collectors.toList());
-
-        if (alive.size() <= 1) {
-            endGame(a, alive.isEmpty() ? null : alive.get(0));
-        }
-    }
-
-    private void endGame(ArenaData a, Player winner) {
-        if (!a.active) return;
-        a.active = false;
-        a.borderEnabled = false;
-
-        String name = (winner != null) ? winner.getName() : "Remis";
-        broadcastToWorld(a.world, ChatColor.GOLD + "=== KONIEC GRY ===");
-        broadcastToWorld(a.world, ChatColor.YELLOW + "Zwyciezca: " + ChatColor.WHITE + name);
-
-        launchFireworks(a, winner);
-
-        Bukkit.getScheduler().runTaskLater(this, () -> {
-            World spawnWorld = Bukkit.getWorld(SPAWN_WORLD_NAME);
-            for (Player p : a.world.getPlayers()) {
-                p.teleport(spawnWorld != null ? spawnWorld.getSpawnLocation() : a.world.getSpawnLocation());
-                p.setGameMode(GameMode.ADVENTURE);
-                resetPlayerAfterArena(p);
-            }
-        }, 160L);
-    }
-
-    private void launchFireworks(ArenaData arena, Player winner) {
-        if (winner != null) {
-            Location loc = winner.getLocation().clone().add(0, 8, 0);
-            for (int i = 0; i < 5; i++)
-                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(loc), i * 8L);
-        } else {
-            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
-            for (int i = 0; i < 8; i++)
-                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
-        }
-    }
-
-    private void spawnFirework(Location loc) {
-        Firework fw = loc.getWorld().spawn(loc, Firework.class);
-        FireworkMeta meta = fw.getFireworkMeta();
-        meta.addEffect(FireworkEffect.builder()
-                .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
-                .with(FireworkEffect.Type.BURST)
-                .trail(true)
-                .flicker(true)
-                .build());
-        meta.setPower(2);
-        fw.setFireworkMeta(meta);
     }
 
     @EventHandler
@@ -510,7 +539,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== RECEPTURY I GENEROWANIE ====================
+    // ==================== RECEPTURY ====================
     private void registerCustomRecipes() {
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);
@@ -542,7 +571,7 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void generateSolidArena(World world) {
-        int r = 50;
+        int r = 100;
         for (int x = -r; x <= r; x++) {
             for (int z = -r; z <= r; z++) {
                 world.getBlockAt(x, 20, z).setType(Material.BEDROCK);

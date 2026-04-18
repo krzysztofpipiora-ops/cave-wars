@@ -100,11 +100,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 60L, 20L);
     }
 
-    // ==================== FREEZE TYLKO DLA GRACZY NA ARENIE ====================
+    // ==================== FREEZE NA OSTATNIĄ SEKUNDĘ ====================
     private void applyStartFreeze(ArenaData arena) {
         for (Player p : arena.world.getPlayers()) {
-            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 200, 255, false, false));
-            p.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, 200, 200, false, false));
+            p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 200, 255, false, false));
+            p.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 200, 200, false, false));
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 0, false, false));
 
             p.sendTitle(ChatColor.RED + "§lFREEZE!", ChatColor.GRAY + "Gra zaczyna się za chwilę...", 0, 60, 20);
@@ -170,7 +170,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== BORDER ŚWIATA ====================
     private void setArenaWorldBorder(World world) {
         WorldBorder wb = world.getWorldBorder();
         wb.setCenter(0, 0);
@@ -181,7 +180,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         wb.setWarningTime(0);
     }
 
-    // ==================== START GRY ====================
     private void startMatch(ArenaData arena) {
         arena.active = true;
         arena.pvpGraceTime = 180;
@@ -195,11 +193,12 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
-            p.removePotionEffect(PotionEffectType.SLOW);
-            p.removePotionEffect(PotionEffectType.JUMP);
+            p.removePotionEffect(PotionEffectType.SLOWNESS);
+            p.removePotionEffect(PotionEffectType.JUMP_BOOST);
             p.removePotionEffect(PotionEffectType.BLINDNESS);
 
-            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
+            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", 
+                       ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
 
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
@@ -233,10 +232,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = new Location(arena.world, random.nextInt(180) - 90, -10, random.nextInt(180) - 90);
             boolean far = true;
             for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 25) {
-                    far = false;
-                    break;
-                }
+                if (loc.distance(o) < 25) far = false;
             }
             if (far) return loc;
         }
@@ -429,7 +425,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== GŁÓWNA METODA Z DROPAMI POD GRACZEM ====================
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
@@ -481,7 +476,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             return;
         }
 
-        // Normalne dropy
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
         for (ItemStack item : drops) {
             dropItemUnderPlayer(p, item);
@@ -557,12 +551,18 @@ public class CaveWars extends JavaPlugin implements Listener {
         broadcastToWorld(arena.world, msg);
     }
 
-    @EventHandler public void onPlayerQuit(PlayerQuitEvent e) { removeBossBar(e.getPlayer()); }
-    @EventHandler public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
-        if (arenas.containsKey(e.getFrom().getUID())) resetPlayerAfterArena(e.getPlayer());
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent e) {
+        removeBossBar(e.getPlayer());
     }
 
-    // ==================== RECEPTURY ====================
+    @EventHandler
+    public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
+        if (arenas.containsKey(e.getFrom().getUID())) {
+            resetPlayerAfterArena(e.getPlayer());
+        }
+    }
+
     private void registerCustomRecipes() {
         NamespacedKey netheriteKey = new NamespacedKey(this, "cw_netherite_ingot");
         if (Bukkit.getRecipe(netheriteKey) != null) Bukkit.removeRecipe(netheriteKey);

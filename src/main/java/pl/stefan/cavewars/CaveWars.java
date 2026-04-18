@@ -103,13 +103,25 @@ public class CaveWars extends JavaPlugin implements Listener {
     // ==================== FREEZE TYLKO DLA GRACZY NA ARENIE ====================
     private void applyStartFreeze(ArenaData arena) {
         for (Player p : arena.world.getPlayers()) {
-            // Mocny freeze na 10 sekund (200 ticków = 10s)
             p.addPotionEffect(new PotionEffect(PotionEffectType.SLOW, 200, 255, false, false));
             p.addPotionEffect(new PotionEffect(PotionEffectType.JUMP, 200, 200, false, false));
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 0, false, false));
 
             p.sendTitle(ChatColor.RED + "§lFREEZE!", ChatColor.GRAY + "Gra zaczyna się za chwilę...", 0, 60, 20);
             p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 1.0f, 0.5f);
+        }
+    }
+
+    // ==================== DROP POD GRACZEM (przy pełnym eq) ====================
+    private void dropItemUnderPlayer(Player p, ItemStack item) {
+        if (item == null || item.getType() == Material.AIR) return;
+
+        HashMap<Integer, ItemStack> leftover = p.getInventory().addItem(item);
+
+        for (ItemStack rest : leftover.values()) {
+            if (rest != null && rest.getAmount() > 0) {
+                p.getWorld().dropItemNaturally(p.getLocation().add(0, 0.3, 0), rest);
+            }
         }
     }
 
@@ -128,14 +140,12 @@ public class CaveWars extends JavaPlugin implements Listener {
                 showCountdownTitle(arena.world, arena.countdown);
             }
 
-            // FREEZE na ostatnią sekundę — tylko gracze na tej arenie
             if (arena.countdown == 1) {
                 applyStartFreeze(arena);
             }
 
             arena.countdown--;
-        } 
-        else if (arena.countdown == 0) {
+        } else if (arena.countdown == 0) {
             arena.countdown = -1;
             generateSolidArena(arena.world);
             startMatch(arena);
@@ -185,16 +195,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
-            // Usuwamy freeze po starcie gry
             p.removePotionEffect(PotionEffectType.SLOW);
             p.removePotionEffect(PotionEffectType.JUMP);
             p.removePotionEffect(PotionEffectType.BLINDNESS);
 
-            p.sendTitle(
-                ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!",
-                ChatColor.GOLD + "Powodzenia na arenie!",
-                10, 70, 20
-            );
+            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
 
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
@@ -209,10 +214,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().clear();
             p.getInventory().setArmorContents(null);
             setPlayerLevel30(p);
-            p.getInventory().addItem(
-                new ItemStack(Material.STONE_PICKAXE),
-                new ItemStack(Material.BREAD, 32)
-            );
+            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
         }
 
         broadcastToWorld(arena.world, ChatColor.RED + "§lSztuczna granica zaczęła się kurczyć!");
@@ -371,8 +373,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         String name = (winner != null) ? winner.getName() : "Remis";
         for (Player p : a.world.getPlayers()) {
-            p.sendTitle(ChatColor.GOLD + "§lKONIEC GRY",
-                       ChatColor.YELLOW + "Zwycięzca: " + ChatColor.WHITE + name, 10, 140, 40);
+            p.sendTitle(ChatColor.GOLD + "§lKONIEC GRY", ChatColor.YELLOW + "Zwycięzca: " + ChatColor.WHITE + name, 10, 140, 40);
         }
 
         if (winner != null) {
@@ -411,9 +412,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         meta.addEffect(FireworkEffect.builder()
                 .withColor(Color.RED, Color.YELLOW, Color.ORANGE, Color.WHITE)
                 .with(FireworkEffect.Type.BURST)
-                .trail(true)
-                .flicker(true)
-                .build());
+                .trail(true).flicker(true).build());
         meta.setPower(2);
         fw.setFireworkMeta(meta);
     }
@@ -430,26 +429,31 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
+    // ==================== GŁÓWNA METODA Z DROPAMI POD GRACZEM ====================
     @EventHandler(ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
+
         Player p = event.getPlayer();
         Block b = event.getBlock();
         Material type = b.getType();
 
         if (type == Material.OAK_LEAVES) {
-            if (random.nextDouble() < 0.20) p.getInventory().addItem(new ItemStack(Material.APPLE));
+            if (random.nextDouble() < 0.20) dropItemUnderPlayer(p, new ItemStack(Material.APPLE));
             b.setType(Material.AIR);
             event.setCancelled(true);
             return;
         }
+
         if (type == Material.MELON) {
-            p.getInventory().addItem(new ItemStack(Material.MELON_SLICE, random.nextInt(5) + 3));
+            int amount = random.nextInt(5) + 3;
+            dropItemUnderPlayer(p, new ItemStack(Material.MELON_SLICE, amount));
             b.setType(Material.AIR);
             event.setCancelled(true);
             return;
         }
+
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());
@@ -461,24 +465,28 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
 
         ItemStack drop = null;
-        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) drop = new ItemStack(Material.IRON_INGOT);
-        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) drop = new ItemStack(Material.GOLD_INGOT);
-        if (drop != null) {
-            p.getInventory().addItem(drop);
-            b.setType(Material.AIR);
-            event.setDropItems(false);
-            return;
-        }
-        if (type == Material.ANCIENT_DEBRIS) {
-            p.getInventory().addItem(new ItemStack(Material.NETHERITE_SCRAP));
-            b.setType(Material.AIR);
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE)
+            drop = new ItemStack(Material.IRON_INGOT);
+        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE)
+            drop = new ItemStack(Material.GOLD_INGOT);
+        else if (type == Material.ANCIENT_DEBRIS) {
+            drop = new ItemStack(Material.NETHERITE_SCRAP);
             p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś i oczyściłeś starożytny gruz!");
+        }
+
+        if (drop != null) {
+            dropItemUnderPlayer(p, drop);
+            b.setType(Material.AIR);
             event.setDropItems(false);
             return;
         }
 
+        // Normalne dropy
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        for (ItemStack item : drops) p.getInventory().addItem(item);
+        for (ItemStack item : drops) {
+            dropItemUnderPlayer(p, item);
+        }
+
         b.setType(Material.AIR);
         event.setDropItems(false);
     }
@@ -549,16 +557,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         broadcastToWorld(arena.world, msg);
     }
 
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent e) {
-        removeBossBar(e.getPlayer());
-    }
-
-    @EventHandler
-    public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
-        if (arenas.containsKey(e.getFrom().getUID())) {
-            resetPlayerAfterArena(e.getPlayer());
-        }
+    @EventHandler public void onPlayerQuit(PlayerQuitEvent e) { removeBossBar(e.getPlayer()); }
+    @EventHandler public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
+        if (arenas.containsKey(e.getFrom().getUID())) resetPlayerAfterArena(e.getPlayer());
     }
 
     // ==================== RECEPTURY ====================

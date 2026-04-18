@@ -112,12 +112,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== DROP POD GRACZEM (przy pełnym eq) ====================
+    // ==================== DROP POD GRACZEM ====================
     private void dropItemUnderPlayer(Player p, ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return;
 
         HashMap<Integer, ItemStack> leftover = p.getInventory().addItem(item);
-
         for (ItemStack rest : leftover.values()) {
             if (rest != null && rest.getAmount() > 0) {
                 p.getWorld().dropItemNaturally(p.getLocation().add(0, 0.3, 0), rest);
@@ -139,11 +138,9 @@ public class CaveWars extends JavaPlugin implements Listener {
             if (arena.countdown % 10 == 0 || arena.countdown <= 5) {
                 showCountdownTitle(arena.world, arena.countdown);
             }
-
             if (arena.countdown == 1) {
                 applyStartFreeze(arena);
             }
-
             arena.countdown--;
         } else if (arena.countdown == 0) {
             arena.countdown = -1;
@@ -153,15 +150,13 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void showCountdownTitle(World world, int seconds) {
-        String title;
-        String subtitle;
-        if (seconds > 10) {
-            title = ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA";
-            subtitle = ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund";
-        } else {
-            title = ChatColor.RED + "" + ChatColor.BOLD + String.valueOf(seconds);
-            subtitle = ChatColor.YELLOW + "Przygotuj się...";
-        }
+        String title = (seconds > 10) ?
+                ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA" :
+                ChatColor.RED + "" + ChatColor.BOLD + String.valueOf(seconds);
+        String subtitle = (seconds > 10) ?
+                ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund" :
+                ChatColor.YELLOW + "Przygotuj się...";
+
         for (Player p : world.getPlayers()) {
             p.sendTitle(title, subtitle, 0, 45, 10);
             if (seconds <= 5) {
@@ -232,7 +227,10 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = new Location(arena.world, random.nextInt(180) - 90, -10, random.nextInt(180) - 90);
             boolean far = true;
             for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 25) far = false;
+                if (loc.distance(o) < 25) {
+                    far = false;
+                    break;
+                }
             }
             if (far) return loc;
         }
@@ -330,8 +328,9 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player killer = victim.getKiller();
         a.eliminated.add(victim.getUniqueId());
 
+        // Itemy wypadają na ziemię
         e.setKeepInventory(false);
-        e.getDrops().clear();
+        // e.getDrops().clear(); ← usunięte, aby itemy wypadały
 
         victim.sendMessage(ChatColor.RED + "Zostałeś wyeliminowany!");
         handlePlayerDeath(victim, killer);
@@ -440,7 +439,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             event.setCancelled(true);
             return;
         }
-
         if (type == Material.MELON) {
             int amount = random.nextInt(5) + 3;
             dropItemUnderPlayer(p, new ItemStack(Material.MELON_SLICE, amount));
@@ -448,7 +446,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             event.setCancelled(true);
             return;
         }
-
         if (random.nextDouble() < 0.005) {
             b.setType(Material.CHEST);
             fillChest((Chest) b.getState());

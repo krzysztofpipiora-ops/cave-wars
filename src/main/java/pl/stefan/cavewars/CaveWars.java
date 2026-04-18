@@ -116,7 +116,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         wb.setWarningTime(0);
     }
 
-    // ==================== LOBBY ====================
     private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
         if (count < 2) {
@@ -138,13 +137,8 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void showCountdownTitle(World world, int seconds) {
-        String title = seconds > 10 ?
-                ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA" :
-                ChatColor.RED + "" + ChatColor.BOLD + String.valueOf(seconds);
-        String subtitle = seconds > 10 ?
-                ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund" :
-                ChatColor.YELLOW + "Przygotuj się...";
-
+        String title = seconds > 10 ? ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA" : ChatColor.RED + "" + ChatColor.BOLD + String.valueOf(seconds);
+        String subtitle = seconds > 10 ? ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund" : ChatColor.YELLOW + "Przygotuj się...";
         for (Player p : world.getPlayers()) {
             p.sendTitle(title, subtitle, 0, 45, 10);
             if (seconds <= 5) {
@@ -166,11 +160,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
-            p.sendTitle(
-                ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!",
-                ChatColor.GOLD + "Powodzenia na arenie!",
-                10, 70, 20
-            );
+            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
 
@@ -184,10 +174,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             p.getInventory().clear();
             p.getInventory().setArmorContents(null);
             setPlayerLevel30(p);
-            p.getInventory().addItem(
-                new ItemStack(Material.STONE_PICKAXE),
-                new ItemStack(Material.BREAD, 32)
-            );
+            p.getInventory().addItem(new ItemStack(Material.STONE_PICKAXE), new ItemStack(Material.BREAD, 32));
         }
 
         broadcastToWorld(arena.world, ChatColor.RED + "§lSztuczna granica zaczęła się kurczyć!");
@@ -206,7 +193,10 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = new Location(arena.world, random.nextInt(180) - 90, -10, random.nextInt(180) - 90);
             boolean far = true;
             for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 25) far = false;
+                if (loc.distance(o) < 25) {
+                    far = false;
+                    break;
+                }
             }
             if (far) return loc;
         }
@@ -218,7 +208,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         Inventory inv = c.getInventory();
         inv.clear();
 
-        // Wysokiej jakości loot
         addLoot(inv, Material.DIAMOND, 1, 3, 28);
         addLoot(inv, Material.GOLDEN_APPLE, 1, 2, 40);
         addLoot(inv, Material.IRON_INGOT, 4, 12, 45);
@@ -233,14 +222,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         addLoot(inv, Material.SHIELD, 1, 1, 18);
         addLoot(inv, Material.ENDER_PEARL, 1, 4, 30);
         addLoot(inv, Material.SPECTRAL_ARROW, 6, 16, 25);
-        addLoot(inv, Material.POTION, 1, 2, 35); // będzie leczący
 
-        // Enchantowana książka
         if (random.nextInt(100) < 70) {
             inv.setItem(random.nextInt(inv.getSize()), createRandomEnchantedBook());
         }
 
-        // Jedzenie i materiały
         for (int i = 0; i < 7; i++) {
             if (random.nextBoolean()) {
                 inv.setItem(random.nextInt(inv.getSize()), new ItemStack(Material.BREAD, random.nextInt(12) + 6));
@@ -263,10 +249,10 @@ public class CaveWars extends JavaPlugin implements Listener {
                 Enchantment.SHARPNESS, Enchantment.PROTECTION, Enchantment.UNBREAKING,
                 Enchantment.EFFICIENCY, Enchantment.FORTUNE, Enchantment.POWER,
                 Enchantment.FLAME, Enchantment.INFINITY, Enchantment.KNOCKBACK,
-                Enchantment.FIRE_ASPECT, Enchantment.LOOT_BONUS_MOBS
+                Enchantment.FIRE_ASPECT, Enchantment.LOOTING, Enchantment.SWEEPING_EDGE
         };
 
-        int count = random.nextInt(2) + 1; // 1 lub 2 enchants
+        int count = random.nextInt(2) + 1;
 
         for (int i = 0; i < count; i++) {
             Enchantment e = enchants[random.nextInt(enchants.length)];
@@ -279,13 +265,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         return book;
     }
 
-    // ==================== EFEKTY GRANICY ====================
     private void applyBorderEffects(Player p, ArenaData arena) {
         if (!arena.borderEnabled) return;
         double x = p.getLocation().getX();
         double z = p.getLocation().getZ();
         double r = arena.borderRadius;
-
         if (Math.abs(x) > r || Math.abs(z) > r) {
             p.damage(2.0);
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 60, 0, false, false));
@@ -299,7 +283,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void updateActiveArena(ArenaData a) {
         setArenaWorldBorder(a.world);
-
         for (Player p : a.world.getPlayers()) {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
                 updateBossBar(p, a);
@@ -366,7 +349,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
         Player killer = victim.getKiller();
         a.eliminated.add(victim.getUniqueId());
-
         e.setKeepInventory(false);
         e.getDrops().clear();
 

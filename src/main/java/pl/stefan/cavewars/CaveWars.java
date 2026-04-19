@@ -1,6 +1,8 @@
 package pl.stefan.cavewars;
 
 import net.milkbowl.vault.economy.Economy;
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.block.Chest;
@@ -48,6 +50,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         int pvpGraceTime = 180;
         List<Location> spawnPoints = new ArrayList<>();
         Set<UUID> eliminated = new HashSet<>();
+        Set<UUID> playersWhoPlayed = new HashSet<>(); // KLUCZOWE - kto naprawdę grał
         double borderRadius = 200.0;
         int borderShrinkRemaining = 0;
         boolean borderEnabled = false;
@@ -69,13 +72,13 @@ public class CaveWars extends JavaPlugin implements Listener {
             RegisteredServiceProvider<Economy> rsp = Bukkit.getServicesManager().getRegistration(Economy.class);
             if (rsp != null) {
                 economy = rsp.getProvider();
-                getLogger().info("§aVault Economy pomyślnie podłączony!");
+                getLogger().info("§aVault Economy połączony!");
             }
         }
 
         Bukkit.getScheduler().runTaskLater(this, () -> {
             loadArenas();
-            getLogger().info("§aSystem aren CaveWars został zainicjalizowany.");
+            getLogger().info("§aCaveWars Solo został zainicjalizowany.");
         }, 40L);
 
         startMainTask();
@@ -100,22 +103,18 @@ public class CaveWars extends JavaPlugin implements Listener {
         }, 60L, 20L);
     }
 
-    // ==================== FREEZE NA OSTATNIĄ SEKUNDĘ ====================
     private void applyStartFreeze(ArenaData arena) {
         for (Player p : arena.world.getPlayers()) {
             p.addPotionEffect(new PotionEffect(PotionEffectType.SLOWNESS, 200, 255, false, false));
             p.addPotionEffect(new PotionEffect(PotionEffectType.JUMP_BOOST, 200, 200, false, false));
             p.addPotionEffect(new PotionEffect(PotionEffectType.BLINDNESS, 200, 0, false, false));
-
             p.sendTitle(ChatColor.RED + "§lFREEZE!", ChatColor.GRAY + "Gra zaczyna się za chwilę...", 0, 60, 20);
             p.playSound(p.getLocation(), Sound.BLOCK_ANVIL_LAND, 1.0f, 0.5f);
         }
     }
 
-    // ==================== DROP POD GRACZEM ====================
     private void dropItemUnderPlayer(Player p, ItemStack item) {
         if (item == null || item.getType() == Material.AIR) return;
-
         HashMap<Integer, ItemStack> leftover = p.getInventory().addItem(item);
         for (ItemStack rest : leftover.values()) {
             if (rest != null && rest.getAmount() > 0) {
@@ -124,7 +123,6 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
     }
 
-    // ==================== LOBBY ====================
     private void handleLobbyCountdown(ArenaData arena) {
         int count = arena.world.getPlayers().size();
         if (count < 2) {
@@ -138,9 +136,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             if (arena.countdown % 10 == 0 || arena.countdown <= 5) {
                 showCountdownTitle(arena.world, arena.countdown);
             }
-            if (arena.countdown == 1) {
-                applyStartFreeze(arena);
-            }
+            if (arena.countdown == 1) applyStartFreeze(arena);
             arena.countdown--;
         } else if (arena.countdown == 0) {
             arena.countdown = -1;
@@ -150,18 +146,11 @@ public class CaveWars extends JavaPlugin implements Listener {
     }
 
     private void showCountdownTitle(World world, int seconds) {
-        String title = (seconds > 10) ?
-                ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA" :
-                ChatColor.RED + "" + ChatColor.BOLD + String.valueOf(seconds);
-        String subtitle = (seconds > 10) ?
-                ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund" :
-                ChatColor.YELLOW + "Przygotuj się...";
-
+        String title = (seconds > 10) ? ChatColor.YELLOW + "" + ChatColor.BOLD + "START ZA" : ChatColor.RED + "" + ChatColor.BOLD + seconds;
+        String subtitle = (seconds > 10) ? ChatColor.GOLD + "" + ChatColor.BOLD + seconds + ChatColor.YELLOW + " sekund" : ChatColor.YELLOW + "Przygotuj się...";
         for (Player p : world.getPlayers()) {
             p.sendTitle(title, subtitle, 0, 45, 10);
-            if (seconds <= 5) {
-                p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.8f);
-            }
+            if (seconds <= 5) p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.8f);
         }
     }
 
@@ -179,21 +168,22 @@ public class CaveWars extends JavaPlugin implements Listener {
         arena.active = true;
         arena.pvpGraceTime = 180;
         arena.eliminated.clear();
+        arena.playersWhoPlayed.clear();
         arena.spawnPoints.clear();
 
         setArenaWorldBorder(arena.world);
-
         arena.borderRadius = 200.0;
         arena.borderShrinkRemaining = 1500;
         arena.borderEnabled = true;
 
         for (Player p : arena.world.getPlayers()) {
+            arena.playersWhoPlayed.add(p.getUniqueId()); // Zapisujemy, że grał
+
             p.removePotionEffect(PotionEffectType.SLOWNESS);
             p.removePotionEffect(PotionEffectType.JUMP_BOOST);
             p.removePotionEffect(PotionEffectType.BLINDNESS);
 
-            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", 
-                       ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
+            p.sendTitle(ChatColor.GREEN + "" + ChatColor.BOLD + "GRA ZACZĘTA!", ChatColor.GOLD + "Powodzenia na arenie!", 10, 70, 20);
 
             Location loc = findSafeSpawn(arena);
             arena.spawnPoints.add(loc);
@@ -227,10 +217,7 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = new Location(arena.world, random.nextInt(180) - 90, -10, random.nextInt(180) - 90);
             boolean far = true;
             for (Location o : arena.spawnPoints) {
-                if (loc.distance(o) < 25) {
-                    far = false;
-                    break;
-                }
+                if (loc.distance(o) < 25) far = false;
             }
             if (far) return loc;
         }
@@ -255,7 +242,6 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void updateActiveArena(ArenaData a) {
         setArenaWorldBorder(a.world);
-
         for (Player p : a.world.getPlayers()) {
             if (p.getGameMode() == GameMode.SURVIVAL && !a.eliminated.contains(p.getUniqueId())) {
                 updateBossBar(p, a);
@@ -281,14 +267,11 @@ public class CaveWars extends JavaPlugin implements Listener {
                 nearest = other;
             }
         }
-        String pvp = arena.pvpGraceTime > 0
-                ? ChatColor.GREEN + "Ochrona: " + arena.pvpGraceTime + "s "
-                : ChatColor.RED + "PvP: ON ";
-        if (nearest != null) {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " + ChatColor.GOLD + "Najbliższy: " + ChatColor.WHITE + (int) minDistance + " bloków");
-        } else {
-            p.sendActionBar(pvp + ChatColor.DARK_GRAY + " | " + ChatColor.YELLOW + "Brak innych żywych graczy");
-        }
+        String pvp = arena.pvpGraceTime > 0 ? ChatColor.GREEN + "Ochrona: " + arena.pvpGraceTime + "s " : ChatColor.RED + "PvP: ON ";
+        String msg = nearest != null 
+                ? pvp + ChatColor.DARK_GRAY + " | " + ChatColor.GOLD + "Najbliższy: " + ChatColor.WHITE + (int) minDistance + " bloków"
+                : pvp + ChatColor.DARK_GRAY + " | " + ChatColor.YELLOW + "Brak innych żywych graczy";
+        p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(msg));
     }
 
     private void updateBossBar(Player p, ArenaData a) {
@@ -328,9 +311,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         Player killer = victim.getKiller();
         a.eliminated.add(victim.getUniqueId());
 
-        // Itemy wypadają na ziemię
         e.setKeepInventory(false);
-        // e.getDrops().clear(); ← usunięte, aby itemy wypadały
 
         victim.sendMessage(ChatColor.RED + "Zostałeś wyeliminowany!");
         handlePlayerDeath(victim, killer);
@@ -394,10 +375,6 @@ public class CaveWars extends JavaPlugin implements Listener {
             Location loc = winner.getLocation().clone().add(0, 8, 0);
             for (int i = 0; i < 5; i++)
                 Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(loc), i * 8L);
-        } else {
-            Location center = arena.world.getSpawnLocation().clone().add(0, 15, 0);
-            for (int i = 0; i < 8; i++)
-                Bukkit.getScheduler().runTaskLater(this, () -> spawnFirework(center), i * 6L);
         }
     }
 
@@ -428,7 +405,6 @@ public class CaveWars extends JavaPlugin implements Listener {
     public void onBlockBreak(BlockBreakEvent event) {
         ArenaData arena = arenas.get(event.getBlock().getWorld().getUID());
         if (arena == null || !arena.active) return;
-
         Player p = event.getPlayer();
         Block b = event.getBlock();
         Material type = b.getType();
@@ -457,13 +433,11 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
 
         ItemStack drop = null;
-        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE)
-            drop = new ItemStack(Material.IRON_INGOT);
-        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE)
-            drop = new ItemStack(Material.GOLD_INGOT);
+        if (type == Material.IRON_ORE || type == Material.DEEPSLATE_IRON_ORE) drop = new ItemStack(Material.IRON_INGOT);
+        else if (type == Material.GOLD_ORE || type == Material.DEEPSLATE_GOLD_ORE) drop = new ItemStack(Material.GOLD_INGOT);
         else if (type == Material.ANCIENT_DEBRIS) {
             drop = new ItemStack(Material.NETHERITE_SCRAP);
-            p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś i oczyściłeś starożytny gruz!");
+            p.sendMessage(ChatColor.DARK_RED + "Wydobyłeś starożytny gruz!");
         }
 
         if (drop != null) {
@@ -474,9 +448,7 @@ public class CaveWars extends JavaPlugin implements Listener {
         }
 
         Collection<ItemStack> drops = b.getDrops(p.getInventory().getItemInMainHand());
-        for (ItemStack item : drops) {
-            dropItemUnderPlayer(p, item);
-        }
+        for (ItemStack item : drops) dropItemUnderPlayer(p, item);
 
         b.setType(Material.AIR);
         event.setDropItems(false);
@@ -544,8 +516,7 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     private void handlePlayerJoinArena(Player p, ArenaData arena) {
         int current = arena.world.getPlayers().size();
-        String msg = ChatColor.GRAY + p.getName() + " dołączył na arenę!!! (" + current + "/12)";
-        broadcastToWorld(arena.world, msg);
+        broadcastToWorld(arena.world, ChatColor.GRAY + p.getName() + " dołączył na arenę!!! (" + current + "/12)");
     }
 
     @EventHandler
@@ -555,8 +526,12 @@ public class CaveWars extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerChangeWorld(PlayerChangedWorldEvent e) {
-        if (arenas.containsKey(e.getFrom().getUID())) {
-            resetPlayerAfterArena(e.getPlayer());
+        World from = e.getFrom();
+        if (registeredWorlds.contains(from.getUID())) {
+            ArenaData arena = arenas.get(from.getUID());
+            if (arena != null && arena.playersWhoPlayed.contains(e.getPlayer().getUniqueId())) {
+                resetPlayerAfterArena(e.getPlayer());
+            }
         }
     }
 
